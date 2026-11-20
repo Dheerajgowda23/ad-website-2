@@ -94,6 +94,55 @@ export const GuidelinesPage = () => {
           </div>
         </div>
 
+        {/* Official Formats & Downloads */}
+        <section className="rounded-lg border border-slate-200 bg-white p-6">
+          <h2 className="text-base font-bold text-navy-950">Official Formats & Downloads</h2>
+          <p className="mt-1 text-xs text-slate-500">
+            Standard Annexures and templates issued under ADA Policy Ref: ADA/ADM/EST/0267/4/S.Trng: 2025.
+          </p>
+          <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 text-xs">
+            <a
+              href="/api/public/info/guidelines/annexure-blank"
+              download="ADA-Annexure-II-College-Recommendation-Blank.pdf"
+              className="flex items-center justify-between p-4 rounded-lg border border-slate-200 bg-slate-50 hover:bg-teal-50/50 hover:border-teal-300 transition group"
+            >
+              <div>
+                <span className="font-bold text-navy-950 group-hover:text-teal-700">Annexure - II Format</span>
+                <p className="text-[11px] text-slate-500 mt-0.5">College Recommendation Letter</p>
+              </div>
+              <svg className="w-5 h-5 text-slate-400 group-hover:text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+            </a>
+
+            <Link
+              to="/verify"
+              className="flex items-center justify-between p-4 rounded-lg border border-slate-200 bg-slate-50 hover:bg-teal-50/50 hover:border-teal-300 transition group"
+            >
+              <div>
+                <span className="font-bold text-navy-950 group-hover:text-teal-700">Certificate Verification</span>
+                <p className="text-[11px] text-slate-500 mt-0.5">Online Serial & QR Verification</p>
+              </div>
+              <svg className="w-5 h-5 text-slate-400 group-hover:text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </Link>
+
+            <Link
+              to="/status-check"
+              className="flex items-center justify-between p-4 rounded-lg border border-slate-200 bg-slate-50 hover:bg-teal-50/50 hover:border-teal-300 transition group"
+            >
+              <div>
+                <span className="font-bold text-navy-950 group-hover:text-teal-700">Application Status</span>
+                <p className="text-[11px] text-slate-500 mt-0.5">Lookup by App No & DOB</p>
+              </div>
+              <svg className="w-5 h-5 text-slate-400 group-hover:text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+            </Link>
+          </div>
+        </section>
+
         {/* Process Flow */}
         <section className="rounded-lg border border-slate-200 bg-white p-6">
           <h2 className="text-base font-bold text-navy-950">Application Lifecycle</h2>

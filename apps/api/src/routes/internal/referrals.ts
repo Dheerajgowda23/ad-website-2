@@ -2,6 +2,7 @@ import { Router } from 'express';
 import type { AppDeps } from '../../types.js';
 import { ApiError } from '../../lib/http.js';
 import { requirePermission } from '../../middleware/auth.js';
+import { requireFeatureFlag } from '../../middleware/feature-flag.js';
 import { createReferralSchema, revokeReferralSchema } from '@ada/shared';
 import {
   createReferralCode,
@@ -9,31 +10,44 @@ import {
   revokeReferralCode,
   getReferralAnomalyReport,
 } from '../../services/referral.service.js';
+import { notifyReferralIssued } from '../../services/notification.service.js';
 
 export const referralsRouter = (deps: AppDeps): Router => {
   const router = Router();
 
   // Create new referral code (quota enforced)
-  router.post('/', requirePermission(deps, 'referral:create'), async (req, res, next) => {
-    try {
-      if (!deps.prisma) throw new ApiError(503, 'DB_UNAVAILABLE', 'Database is not configured for this process');
-      const userId = String(res.locals.userId ?? '');
-      const parsed = createReferralSchema.parse(req.body);
-      const result = await createReferralCode(
-        { prisma: deps.prisma, env: deps.env },
-        {
-          userId,
-          level: parsed.level,
-          studentName: parsed.studentName,
-          studentEmail: parsed.studentEmail,
-          ip: req.ip ?? null,
-        },
-      );
-      res.json(result);
-    } catch (err) {
-      next(err);
-    }
-  });
+  router.post(
+    '/',
+    requirePermission(deps, 'referral:create'),
+    requireFeatureFlag(deps, 'referral_issue'),
+    async (req, res, next) => {
+      try {
+        if (!deps.prisma) throw new ApiError(503, 'DB_UNAVAILABLE', 'Database is not configured for this process');
+        const userId = String(res.locals.userId ?? '');
+        const parsed = createReferralSchema.parse(req.body);
+        const result = await createReferralCode(
+          { prisma: deps.prisma, env: deps.env },
+          {
+            userId,
+            level: parsed.level,
+            studentName: parsed.studentName,
+            studentEmail: parsed.studentEmail,
+            ip: req.ip ?? null,
+          },
+        );
+
+        // Queue notification to sponsor
+        const user = await deps.prisma.user.findUnique({ where: { id: userId } });
+        if (user?.email) {
+          await notifyReferralIssued({ prisma: deps.prisma }, user.email, result.code, parsed.level);
+        }
+
+        res.json(result);
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
 
   // List sponsor's own referrals
   router.get('/my', requirePermission(deps, 'referral:read:own'), async (_req, res, next) => {
@@ -69,8 +83,8 @@ export const referralsRouter = (deps: AppDeps): Router => {
     }
   });
 
-  // Anomaly report for Admin & HR
-  router.get('/anomalies', requirePermission(deps, 'screening:read'), async (_req, res, next) => {
+  // Admin & HR referral anomaly report
+  router.get('/anomalies', requirePermission(deps, 'audit:read'), async (_req, res, next) => {
     try {
       if (!deps.prisma) throw new ApiError(503, 'DB_UNAVAILABLE', 'Database is not configured for this process');
       const result = await getReferralAnomalyReport({ prisma: deps.prisma });

@@ -14,6 +14,10 @@ import type { Env } from '../config/env.js';
 import { hmacHex, sha256Hex } from '../lib/crypto.js';
 import { ApiError, badRequest, conflict, forbidden, notFound } from '../lib/http.js';
 import { writeAudit } from '../lib/audit.js';
+import {
+  notifyApplicationSubmitted,
+  notifyOfferAccepted,
+} from './notification.service.js';
 
 const hashAadhaar = (aadhaarLast4: string, env: Env): string =>
   hmacHex(aadhaarLast4, env.SESSION_SECRET);
@@ -243,6 +247,20 @@ export const submitStudentApplication = async (
 
     return updated;
   });
+
+  if (application.sponsorId) {
+    const sponsor = await deps.prisma.sponsor.findUnique({
+      where: { id: application.sponsorId },
+    });
+    await notifyApplicationSubmitted(
+      { prisma: deps.prisma },
+      application.id,
+      application.student.email,
+      sponsor?.officialEmail ?? null,
+      outcome.applicationNo!,
+      input.fullName,
+    );
+  }
 
   return {
     ok: true,
@@ -538,6 +556,20 @@ export const respondToStudentOffer = async (
       });
     }
   });
+
+  if (response === 'ACCEPT') {
+    const student = await deps.prisma.student.findUnique({
+      where: { id: application.studentId },
+    });
+    if (student?.email) {
+      await notifyOfferAccepted(
+        { prisma: deps.prisma },
+        application.id,
+        student.email,
+        application.applicationNo || application.id,
+      );
+    }
+  }
 
   return { ok: true, status: response === 'ACCEPT' ? 'ACCEPTED' : 'WITHDRAWN' };
 };

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Navbar } from './Navbar.js';
 import { api, ApiError } from './api.js';
@@ -17,8 +18,11 @@ interface CertificateResult {
 }
 
 export const VerifyCertificatePage = () => {
-  const [serialNo, setSerialNo] = useState('');
-  const [searchSerial, setSearchSerial] = useState('');
+  const [searchParams] = useSearchParams();
+  const initialSerial = searchParams.get('serial') || '';
+
+  const [serialNo, setSerialNo] = useState(initialSerial);
+  const [searchSerial, setSearchSerial] = useState(initialSerial);
 
   const certQuery = useQuery<CertificateResult>({
     queryKey: ['verifyCertificate', searchSerial],
@@ -100,30 +104,47 @@ export const VerifyCertificatePage = () => {
                     <dd className="text-slate-800">{certQuery.data.degree} · {certQuery.data.discipline}</dd>
                   </div>
                   <div className="py-2 flex justify-between">
-                    <dt className="text-slate-500">Project Title / Topic</dt>
-                    <dd className="font-medium text-slate-900 max-w-[260px] text-right">{certQuery.data.topic}</dd>
+                    <dt className="text-slate-500">Project / Training Topic</dt>
+                    <dd className="font-medium text-navy-950 text-right max-w-[240px]">{certQuery.data.topic}</dd>
                   </div>
                   <div className="py-2 flex justify-between">
-                    <dt className="text-slate-500">Training Period</dt>
+                    <dt className="text-slate-500">Sponsoring Lab</dt>
+                    <dd className="text-slate-800">{certQuery.data.lab}</dd>
+                  </div>
+                  <div className="py-2 flex justify-between">
+                    <dt className="text-slate-500">Training Tenure</dt>
                     <dd className="text-slate-800">
                       {certQuery.data.startDate ? new Date(certQuery.data.startDate).toLocaleDateString() : '—'} to{' '}
                       {certQuery.data.endDate ? new Date(certQuery.data.endDate).toLocaleDateString() : '—'}
                     </dd>
                   </div>
                   <div className="py-2 flex justify-between">
-                    <dt className="text-slate-500">Date of Issue</dt>
+                    <dt className="text-slate-500">Issue Date</dt>
                     <dd className="text-slate-800">{new Date(certQuery.data.issuedAt).toLocaleDateString()}</dd>
                   </div>
-                  <div className="py-2 flex justify-between">
-                    <dt className="text-slate-500">Issuing Authority</dt>
-                    <dd className="font-medium text-navy-950">Aeronautical Development Agency</dd>
-                  </div>
                 </dl>
+              </div>
+
+              <div className="pt-2">
+                <a
+                  href={`/api/public/info/certificates/${encodeURIComponent(certQuery.data.serialNo)}/pdf`}
+                  download={`ADA-Certificate-${certQuery.data.serialNo.replace(/[/\\?%*:|"<>]/g, '_')}.pdf`}
+                  className="w-full inline-flex items-center justify-center gap-2 rounded-md bg-teal-700 px-4 py-2 text-xs font-bold text-white hover:bg-teal-800 transition"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  </svg>
+                  Download Official Certificate (PDF)
+                </a>
               </div>
             </div>
           )}
         </div>
       </main>
+
+      <footer className="border-t border-slate-200 bg-white py-4 text-center text-xs text-slate-500">
+        Aeronautical Development Agency · P.B. No. 1718, Vimanapura Post, Bengaluru 560017
+      </footer>
     </div>
   );
 };

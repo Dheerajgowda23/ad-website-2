@@ -1,7 +1,8 @@
 import { Router } from 'express';
 import type { AppDeps } from '../../types.js';
-import { ApiError } from '../../lib/http.js';
+import { ApiError, badRequest } from '../../lib/http.js';
 import { requirePermission } from '../../middleware/auth.js';
+import { requireFeatureFlag } from '../../middleware/feature-flag.js';
 import {
   returnForCorrectionSchema,
   rejectEligibilitySchema,
@@ -11,6 +12,7 @@ import {
   securityPassSchema,
   attendanceEntrySchema,
   certificateIssueSchema,
+  maskAadhaar,
 } from '@ada/shared';
 import {
   listApplicationsForStaff,
@@ -30,9 +32,84 @@ import {
   getSeatLedger,
   listAuditLogs,
 } from '../../services/casework.service.js';
+import {
+  generateApplicationSummaryPdf,
+  generateOfferLetterPdf,
+  generateCertificatePdf,
+} from '../../services/pdf.service.js';
+import {
+  notifyCorrectionRequested,
+  notifyOfferIssued,
+  notifyPassIssued,
+  notifyCertificateIssued,
+} from '../../services/notification.service.js';
 
 export const caseworkRouter = (deps: AppDeps): Router => {
   const router = Router();
+
+  // CSV Export endpoint (Admin & HR)
+  router.get('/export/csv', requirePermission(deps, 'export:run'), async (req, res, next) => {
+    try {
+      if (!deps.prisma) throw new ApiError(503, 'DB_UNAVAILABLE', 'Database is not configured for this process');
+      const status = req.query.status ? String(req.query.status) : undefined;
+      const level = req.query.level ? (String(req.query.level) as any) : undefined;
+      const directorateId = req.query.directorateId ? String(req.query.directorateId) : undefined;
+      const search = req.query.q ? String(req.query.q) : undefined;
+
+      const items = await listApplicationsForStaff(
+        { prisma: deps.prisma },
+        { status, level, directorateId, search },
+      );
+
+      const headers = [
+        'Application No',
+        'Student Name',
+        'Email',
+        'Aadhaar Masked',
+        'Level',
+        'Sponsoring Lab',
+        'Sponsor Name',
+        'Directorate',
+        'Topic',
+        'CGPA',
+        'Duration Weeks',
+        'College Letter Verified',
+        'Status',
+        'Submitted At',
+      ];
+
+      const csvRows = [headers.join(',')];
+
+      for (const item of items) {
+        const row = [
+          `"${item.applicationNo || ''}"`,
+          `"${(item.studentName || '').replace(/"/g, '""')}"`,
+          `"${item.studentEmail || ''}"`,
+          `"${item.aadhaarMasked || ''}"`,
+          `"${item.level || ''}"`,
+          `"${item.labName || item.labCode || ''}"`,
+          `"${(item.sponsorName || '').replace(/"/g, '""')}"`,
+          `"${item.directorateName || ''}"`,
+          `"${(item.topic || '').replace(/"/g, '""')}"`,
+          `"${item.cgpa ?? ''}"`,
+          `"${item.durationWeeks ?? ''}"`,
+          `"${item.collegeLetterVerified ? 'YES' : 'NO'}"`,
+          `"${item.status || ''}"`,
+          `"${item.submittedAt ? new Date(item.submittedAt).toISOString().slice(0, 10) : ''}"`,
+        ];
+        csvRows.push(row.join(','));
+      }
+
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="ada-applications-${new Date().toISOString().slice(0, 10)}.csv"`,
+      );
+      res.send(csvRows.join('\n'));
+    } catch (err) {
+      next(err);
+    }
+  });
 
   // 1. Applications listing (Admin & HR, Committee, Director, Security, Guide)
   router.get('/applications', async (req, res, next) => {
@@ -59,6 +136,121 @@ export const caseworkRouter = (deps: AppDeps): Router => {
       if (!deps.prisma) throw new ApiError(503, 'DB_UNAVAILABLE', 'Database is not configured for this process');
       const packet = await getApplicationPacket({ prisma: deps.prisma }, String(req.params.id));
       res.json(packet);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // 2a. Download Application Packet PDF
+  router.get('/applications/:id/summary-pdf', async (req, res, next) => {
+    try {
+      if (!deps.prisma) throw new ApiError(503, 'DB_UNAVAILABLE', 'Database is not configured for this process');
+      const app = await deps.prisma.application.findUnique({
+        where: { id: String(req.params.id) },
+        include: { student: true, lab: true, sponsor: true },
+      });
+      if (!app) throw badRequest('NOT_FOUND', 'Application not found');
+
+      const pdfBytes = await generateApplicationSummaryPdf({
+        applicationNo: app.applicationNo || 'Draft',
+        intakeYear: app.intakeYear,
+        studentName: app.student.fullName,
+        email: app.student.email,
+        phone: app.student.phone,
+        gender: app.student.gender,
+        dob: app.student.dob ? app.student.dob.toISOString().slice(0, 10) : '',
+        nationality: app.student.nationality,
+        aadhaarMasked: maskAadhaar(app.student.aadhaarLast4),
+        collegeName: 'Accredited Institution',
+        degree: app.degree || '',
+        discipline: app.discipline || '',
+        semester: app.semester || 0,
+        yearOfStudy: app.yearOfStudy || 0,
+        cgpa: app.cgpa ? String(app.cgpa) : '',
+        level: app.level,
+        sponsorName: app.sponsor?.fullName ?? 'Employee',
+        labName: app.lab.name,
+        durationWeeks: app.durationWeeks,
+        startDate: app.startDate ? app.startDate.toISOString().slice(0, 10) : null,
+        endDate: app.endDate ? app.endDate.toISOString().slice(0, 10) : null,
+        topic: app.topic,
+        synopsis: app.synopsis,
+        status: app.status,
+        submittedAt: app.submittedAt ? app.submittedAt.toISOString() : null,
+      });
+
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `inline; filename="ADA-${app.applicationNo || 'Packet'}.pdf"`);
+      res.send(Buffer.from(pdfBytes));
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // 2b. Download Offer Letter PDF (Staff view)
+  router.get('/applications/:id/offer-pdf', async (req, res, next) => {
+    try {
+      if (!deps.prisma) throw new ApiError(503, 'DB_UNAVAILABLE', 'Database is not configured for this process');
+      const app = await deps.prisma.application.findUnique({
+        where: { id: String(req.params.id) },
+        include: { student: true, directorate: true, offer: true },
+      });
+      if (!app || !app.offer) throw badRequest('NOT_FOUND', 'Offer not found for application');
+
+      const pdfBytes = await generateOfferLetterPdf({
+        applicationNo: app.applicationNo || app.id,
+        studentName: app.student.fullName,
+        collegeName: 'Accredited Institution',
+        degree: app.degree || 'Degree',
+        discipline: app.discipline || 'Engineering',
+        level: app.level,
+        directorateName: app.directorate?.name || 'Aeronautical Development Agency',
+        guideName: 'Designated Project Guide',
+        reportingDate: app.offer.reportingDate ? app.offer.reportingDate.toISOString().slice(0, 10) : 'TBD',
+        durationWeeks: app.durationWeeks,
+        issuedAt: app.offer.issuedAt.toISOString(),
+      });
+
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `inline; filename="ADA-Offer-${app.applicationNo}.pdf"`);
+      res.send(Buffer.from(pdfBytes));
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // 2c. Download Certificate PDF (Staff view)
+  router.get('/applications/:id/certificate-pdf', async (req, res, next) => {
+    try {
+      if (!deps.prisma) throw new ApiError(503, 'DB_UNAVAILABLE', 'Database is not configured for this process');
+      const app = await deps.prisma.application.findUnique({
+        where: { id: String(req.params.id) },
+        include: { student: true, directorate: true, certificate: true },
+      });
+      if (!app || !app.certificate) throw badRequest('NOT_FOUND', 'Certificate not found for application');
+
+      const hostOrigin = deps.env?.INTERNAL_APP_ORIGIN ?? `${req.protocol}://${req.get('host')}`;
+      const verifyUrl = `${hostOrigin}/verify?serial=${encodeURIComponent(app.certificate.serialNo)}`;
+
+      const pdfBytes = await generateCertificatePdf({
+        serialNo: app.certificate.serialNo,
+        traineeName: app.student.fullName,
+        collegeName: 'Accredited Institution',
+        degree: app.degree || 'Degree',
+        discipline: app.discipline || 'Engineering',
+        topic: app.topic,
+        directorateName: app.directorate?.name || 'Aeronautical Development Agency',
+        guideName: 'Designated Project Guide',
+        startDate: app.startDate ? app.startDate.toLocaleDateString() : 'Start Date',
+        endDate: app.endDate ? app.endDate.toLocaleDateString() : 'End Date',
+        issuedAt: app.certificate.issuedAt.toISOString(),
+        issuedBy: app.certificate.issuedBy,
+        verifyUrl,
+      });
+
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `inline; filename="ADA-Certificate-${app.certificate.serialNo.replace(/[/\\?%*:|"<>]/g, '_')}.pdf"`);
+      res.send(Buffer.from(pdfBytes));
     } catch (err) {
       next(err);
     }
@@ -122,6 +314,21 @@ export const caseworkRouter = (deps: AppDeps): Router => {
           parsed,
           req.ip ?? null,
         );
+
+        const app = await deps.prisma.application.findUnique({
+          where: { id: String(req.params.id) },
+          include: { student: true },
+        });
+        if (app?.student?.email) {
+          await notifyCorrectionRequested(
+            { prisma: deps.prisma },
+            app.id,
+            app.student.email,
+            app.applicationNo || app.id,
+            parsed.reason,
+          );
+        }
+
         res.json(result);
       } catch (err) {
         next(err);
@@ -175,10 +382,11 @@ export const caseworkRouter = (deps: AppDeps): Router => {
     },
   );
 
-  // 8. Committee score/remarks
+  // 8. Committee score/remarks (Guarded by feature flag committee_scoring)
   router.post(
     '/applications/:id/review',
     requirePermission(deps, 'committee:score'),
+    requireFeatureFlag(deps, 'committee_scoring'),
     async (req, res, next) => {
       try {
         if (!deps.prisma) throw new ApiError(503, 'DB_UNAVAILABLE', 'Database is not configured for this process');
@@ -214,6 +422,23 @@ export const caseworkRouter = (deps: AppDeps): Router => {
           parsed,
           req.ip ?? null,
         );
+
+        if (parsed.decision === 'APPROVE') {
+          const app = await deps.prisma.application.findUnique({
+            where: { id: String(req.params.id) },
+            include: { student: true, offer: true },
+          });
+          if (app?.student?.email && app.offer) {
+            await notifyOfferIssued(
+              { prisma: deps.prisma },
+              app.id,
+              app.student.email,
+              app.applicationNo || app.id,
+              app.offer.reportingDate ? app.offer.reportingDate.toISOString().slice(0, 10) : 'TBD',
+            );
+          }
+        }
+
         res.json(result);
       } catch (err) {
         next(err);
@@ -258,6 +483,21 @@ export const caseworkRouter = (deps: AppDeps): Router => {
           parsed.passNo,
           req.ip ?? null,
         );
+
+        const app = await deps.prisma.application.findUnique({
+          where: { id: String(req.params.id) },
+          include: { student: true },
+        });
+        if (app?.student?.email) {
+          await notifyPassIssued(
+            { prisma: deps.prisma },
+            app.id,
+            app.student.email,
+            app.applicationNo || app.id,
+            parsed.passNo,
+          );
+        }
+
         res.json(result);
       } catch (err) {
         next(err);
@@ -265,7 +505,7 @@ export const caseworkRouter = (deps: AppDeps): Router => {
     },
   );
 
-  // 12. Guide / Admin: enter monthly attendance
+  // 12. Guide: enter monthly attendance
   router.post(
     '/applications/:id/attendance',
     requirePermission(deps, 'attendance:write'),
@@ -288,7 +528,7 @@ export const caseworkRouter = (deps: AppDeps): Router => {
     },
   );
 
-  // 13. Guide: complete training sign-off
+  // 13. Guide: mark training completed
   router.post(
     '/applications/:id/complete',
     requirePermission(deps, 'clearance:write'),
@@ -325,6 +565,21 @@ export const caseworkRouter = (deps: AppDeps): Router => {
           parsed.serialNo,
           req.ip ?? null,
         );
+
+        const app = await deps.prisma.application.findUnique({
+          where: { id: String(req.params.id) },
+          include: { student: true },
+        });
+        if (app?.student?.email) {
+          await notifyCertificateIssued(
+            { prisma: deps.prisma },
+            app.id,
+            app.student.email,
+            app.applicationNo || app.id,
+            result.serialNo,
+          );
+        }
+
         res.json(result);
       } catch (err) {
         next(err);

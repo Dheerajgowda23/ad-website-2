@@ -480,6 +480,17 @@ export const DashboardPage = () => {
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="rounded border border-slate-300 px-3 py-1 text-xs w-64"
                 />
+
+                <a
+                  href={`/api/staff/casework/export/csv?${statusFilter ? `status=${statusFilter}&` : ''}${searchQuery ? `q=${encodeURIComponent(searchQuery)}` : ''}`}
+                  download="ada-applications.csv"
+                  className="rounded border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition inline-flex items-center gap-1.5"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  </svg>
+                  Export CSV
+                </a>
               </div>
             </div>
 
@@ -623,6 +634,37 @@ export const DashboardPage = () => {
                         Issue Digital Certificate
                       </button>
                     )}
+
+                    {/* PDF Downloads */}
+                    <div className="ml-auto flex items-center gap-2">
+                      <a
+                        href={`/api/staff/casework/applications/${selectedAppId}/summary-pdf`}
+                        download={`ADA-${packetQuery.data.application.applicationNo || 'Packet'}.pdf`}
+                        className="rounded border border-slate-300 bg-white px-2.5 py-1 font-semibold text-slate-700 hover:bg-slate-100 transition inline-flex items-center gap-1"
+                      >
+                        Packet PDF
+                      </a>
+
+                      {packetQuery.data.offer && (
+                        <a
+                          href={`/api/staff/casework/applications/${selectedAppId}/offer-pdf`}
+                          download={`ADA-Offer-${packetQuery.data.application.applicationNo}.pdf`}
+                          className="rounded border border-slate-300 bg-white px-2.5 py-1 font-semibold text-slate-700 hover:bg-slate-100 transition inline-flex items-center gap-1"
+                        >
+                          Offer PDF
+                        </a>
+                      )}
+
+                      {packetQuery.data.certificate && (
+                        <a
+                          href={`/api/staff/casework/applications/${selectedAppId}/certificate-pdf`}
+                          download={`ADA-Certificate-${packetQuery.data.certificate.serialNo.replace(/[/\\?%*:|"<>]/g, '_')}.pdf`}
+                          className="rounded border border-teal-600 bg-teal-50 px-2.5 py-1 font-bold text-teal-800 hover:bg-teal-100 transition inline-flex items-center gap-1"
+                        >
+                          Certificate PDF
+                        </a>
+                      )}
+                    </div>
                   </div>
 
                   {/* Packet Details Grid */}

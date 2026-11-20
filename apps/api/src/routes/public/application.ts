@@ -1,12 +1,13 @@
 import { Router } from 'express';
 import type { AppDeps } from '../../types.js';
-import { ApiError } from '../../lib/http.js';
+import { ApiError, badRequest } from '../../lib/http.js';
 import { makeRequireStudent } from '../../middleware/auth.js';
 import {
   studentDraftSchema,
   studentSubmitSchema,
   studentEditSchema,
   documentUploadSchema,
+  maskAadhaar,
 } from '@ada/shared';
 import {
   loadDetailedStudentApplication,
@@ -17,6 +18,12 @@ import {
   respondToStudentOffer,
   uploadStudentDocument,
 } from '../../services/application.service.js';
+import {
+  generateRecommendationLetterTemplatePdf,
+  generateApplicationSummaryPdf,
+  generateOfferLetterPdf,
+  generateCertificatePdf,
+} from '../../services/pdf.service.js';
 
 export const publicApplicationRouter = (deps: AppDeps): Router => {
   const router = Router();
@@ -130,6 +137,179 @@ export const publicApplicationRouter = (deps: AppDeps): Router => {
         req.ip ?? null,
       );
       res.json({ document: result });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // Download pre-filled college recommendation letter PDF
+  router.get('/documents/recommendation-template', async (_req, res, next) => {
+    try {
+      if (!deps.prisma) throw new ApiError(503, 'DB_UNAVAILABLE', 'Database is not configured for this process');
+      const applicationId = String(res.locals.applicationId ?? '');
+      const app = await deps.prisma.application.findUnique({
+        where: { id: applicationId },
+        include: { student: true, lab: true, sponsor: true },
+      });
+      if (!app) throw badRequest('NOT_FOUND', 'Application not found');
+
+      const pdfBytes = await generateRecommendationLetterTemplatePdf({
+        studentName: app.student.fullName,
+        collegeName: 'Accredited Institution',
+        degree: app.degree || 'Degree',
+        discipline: app.discipline || 'Engineering',
+        semester: app.semester || 6,
+        cgpa: app.cgpa ? String(app.cgpa) : 'N/A',
+        level: app.level,
+        labName: app.lab.name,
+        sponsorName: app.sponsor?.fullName ?? 'Employee',
+        durationWeeks: app.durationWeeks,
+        startDate: app.startDate ? app.startDate.toISOString().slice(0, 10) : null,
+        endDate: app.endDate ? app.endDate.toISOString().slice(0, 10) : null,
+        topic: app.topic,
+      });
+
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="ADA-College-Recommendation-${app.applicationNo || 'Template'}.pdf"`,
+      );
+      res.send(Buffer.from(pdfBytes));
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // Download application summary PDF
+  router.get('/documents/summary-pdf', async (_req, res, next) => {
+    try {
+      if (!deps.prisma) throw new ApiError(503, 'DB_UNAVAILABLE', 'Database is not configured for this process');
+      const applicationId = String(res.locals.applicationId ?? '');
+      const app = await deps.prisma.application.findUnique({
+        where: { id: applicationId },
+        include: { student: true, lab: true, sponsor: true },
+      });
+      if (!app) throw badRequest('NOT_FOUND', 'Application not found');
+
+      const pdfBytes = await generateApplicationSummaryPdf({
+        applicationNo: app.applicationNo || 'Draft',
+        intakeYear: app.intakeYear,
+        studentName: app.student.fullName,
+        email: app.student.email,
+        phone: app.student.phone,
+        gender: app.student.gender,
+        dob: app.student.dob ? app.student.dob.toISOString().slice(0, 10) : '',
+        nationality: app.student.nationality,
+        aadhaarMasked: maskAadhaar(app.student.aadhaarLast4),
+        collegeName: 'Accredited Institution',
+        degree: app.degree || '',
+        discipline: app.discipline || '',
+        semester: app.semester || 0,
+        yearOfStudy: app.yearOfStudy || 0,
+        cgpa: app.cgpa ? String(app.cgpa) : '',
+        level: app.level,
+        sponsorName: app.sponsor?.fullName ?? 'Employee',
+        labName: app.lab.name,
+        durationWeeks: app.durationWeeks,
+        startDate: app.startDate ? app.startDate.toISOString().slice(0, 10) : null,
+        endDate: app.endDate ? app.endDate.toISOString().slice(0, 10) : null,
+        topic: app.topic,
+        synopsis: app.synopsis,
+        status: app.status,
+        submittedAt: app.submittedAt ? app.submittedAt.toISOString() : null,
+      });
+
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="ADA-Application-${app.applicationNo || 'Summary'}.pdf"`,
+      );
+      res.send(Buffer.from(pdfBytes));
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // Download official offer letter PDF
+  router.get('/documents/offer-letter', async (_req, res, next) => {
+    try {
+      if (!deps.prisma) throw new ApiError(503, 'DB_UNAVAILABLE', 'Database is not configured for this process');
+      const applicationId = String(res.locals.applicationId ?? '');
+      const app = await deps.prisma.application.findUnique({
+        where: { id: applicationId },
+        include: { student: true, directorate: true, offer: true },
+      });
+      if (!app) throw badRequest('NOT_FOUND', 'Application not found');
+
+      if (!app.offer) {
+        throw badRequest('OFFER_NOT_ISSUED', 'Offer letter is not yet available for this application');
+      }
+
+      const pdfBytes = await generateOfferLetterPdf({
+        applicationNo: app.applicationNo || app.id,
+        studentName: app.student.fullName,
+        collegeName: 'Accredited Institution',
+        degree: app.degree || 'Degree',
+        discipline: app.discipline || 'Engineering',
+        level: app.level,
+        directorateName: app.directorate?.name || 'Aeronautical Development Agency',
+        guideName: 'Designated Project Guide',
+        reportingDate: app.offer.reportingDate ? app.offer.reportingDate.toISOString().slice(0, 10) : 'TBD',
+        durationWeeks: app.durationWeeks,
+        issuedAt: app.offer.issuedAt.toISOString(),
+      });
+
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="ADA-Offer-Letter-${app.applicationNo || 'Student'}.pdf"`,
+      );
+      res.send(Buffer.from(pdfBytes));
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // Download certificate PDF
+  router.get('/documents/certificate', async (req, res, next) => {
+    try {
+      if (!deps.prisma) throw new ApiError(503, 'DB_UNAVAILABLE', 'Database is not configured for this process');
+      const applicationId = String(res.locals.applicationId ?? '');
+      const app = await deps.prisma.application.findUnique({
+        where: { id: applicationId },
+        include: { student: true, directorate: true, certificate: true },
+      });
+      if (!app) throw badRequest('NOT_FOUND', 'Application not found');
+
+      if (!app.certificate) {
+        throw badRequest('CERTIFICATE_NOT_ISSUED', 'Certificate has not been issued yet');
+      }
+
+      const hostOrigin = deps.env?.PUBLIC_APP_ORIGIN ?? `${req.protocol}://${req.get('host')}`;
+      const verifyUrl = `${hostOrigin}/verify?serial=${encodeURIComponent(app.certificate.serialNo)}`;
+
+      const pdfBytes = await generateCertificatePdf({
+        serialNo: app.certificate.serialNo,
+        traineeName: app.student.fullName,
+        collegeName: 'Accredited Institution',
+        degree: app.degree || 'Degree',
+        discipline: app.discipline || 'Engineering',
+        topic: app.topic,
+        directorateName: app.directorate?.name || 'Aeronautical Development Agency',
+        guideName: 'Designated Project Guide',
+        startDate: app.startDate ? app.startDate.toLocaleDateString() : 'Start Date',
+        endDate: app.endDate ? app.endDate.toLocaleDateString() : 'End Date',
+        issuedAt: app.certificate.issuedAt.toISOString(),
+        issuedBy: app.certificate.issuedBy,
+        verifyUrl,
+      });
+
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="ADA-Certificate-${app.certificate.serialNo.replace(/[/\\?%*:|"<>]/g, '_')}.pdf"`,
+      );
+      res.send(Buffer.from(pdfBytes));
     } catch (err) {
       next(err);
     }
