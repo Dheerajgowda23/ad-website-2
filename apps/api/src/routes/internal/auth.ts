@@ -9,6 +9,7 @@ import { regenerateSession, destroySession } from '../../middleware/auth.js';
 const emailLimiter = rateLimit({
   windowMs: 10 * 60 * 1000,
   limit: 5,
+  skip: () => process.env.NODE_ENV === 'test' || process.env.PORTAL_ENV === 'test',
   standardHeaders: 'draft-7',
   legacyHeaders: false,
   message: { error: { code: 'RATE_LIMITED', message: 'Too many codes requested. Try again later.' } },
@@ -17,6 +18,7 @@ const emailLimiter = rateLimit({
 const verifyLimiter = rateLimit({
   windowMs: 10 * 60 * 1000,
   limit: 20,
+  skip: () => process.env.NODE_ENV === 'test' || process.env.PORTAL_ENV === 'test',
   standardHeaders: 'draft-7',
   legacyHeaders: false,
   message: { error: { code: 'RATE_LIMITED', message: 'Too many attempts. Try again later.' } },

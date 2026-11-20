@@ -14,6 +14,7 @@ import {
 const redeemLimiter = rateLimit({
   windowMs: 10 * 60 * 1000,
   limit: 5,
+  skip: () => process.env.NODE_ENV === 'test' || process.env.PORTAL_ENV === 'test',
   standardHeaders: 'draft-7',
   legacyHeaders: false,
   message: { error: { code: 'RATE_LIMITED', message: 'Too many attempts. Try again in a few minutes.' } },
@@ -22,6 +23,7 @@ const redeemLimiter = rateLimit({
 const otpLimiter = rateLimit({
   windowMs: 10 * 60 * 1000,
   limit: 10,
+  skip: () => process.env.NODE_ENV === 'test' || process.env.PORTAL_ENV === 'test',
   standardHeaders: 'draft-7',
   legacyHeaders: false,
   message: { error: { code: 'RATE_LIMITED', message: 'Too many attempts. Try again in a few minutes.' } },
@@ -75,7 +77,12 @@ export const publicAuthRouter = (deps: AppDeps): Router => {
         zone: 'public',
         applicationId: result.applicationId,
       };
-      res.json({ resumed: result.resumed, application: result.view, permissions: [] });
+      res.json({
+        applicationId: result.applicationId,
+        resumed: result.resumed,
+        application: result.view,
+        permissions: [],
+      });
     });
   });
 

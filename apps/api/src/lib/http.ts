@@ -19,7 +19,10 @@ export const unauthorized = (code = 'AUTH_REQUIRED', message = 'Sign in to conti
   new ApiError(401, code, message);
 export const forbidden = (code = 'FORBIDDEN', message = 'You do not have access to this action') =>
   new ApiError(403, code, message);
-export const notFound = (message = 'Not found') => new ApiError(404, 'NOT_FOUND', message);
+export const notFound = (codeOrMessage = 'Not found', message?: string) =>
+  message ? new ApiError(404, codeOrMessage, message) : new ApiError(404, 'NOT_FOUND', codeOrMessage);
+export const conflict = (code = 'CONFLICT', message = 'Resource conflict') =>
+  new ApiError(409, code, message);
 
 export const parseBody = <T>(schema: { parse: (input: unknown) => T }, input: unknown): T => schema.parse(input);
 

@@ -3,6 +3,8 @@ import type { AppDeps } from '../../types.js';
 import { makeRequireStaff } from '../../middleware/auth.js';
 import { staffAuthRouter } from './auth.js';
 import { configRouter } from './config.js';
+import { referralsRouter } from './referrals.js';
+import { caseworkRouter } from './casework.js';
 
 /**
  * The intranet router tree. Mounted by createApp only when ZONE=internal; in the
@@ -19,9 +21,16 @@ export const staffRouter = (deps: AppDeps): Router => {
 
   router.get('/me', (_req, res) => {
     const staff = res.locals.staff;
-    res.json({ user: staff, role: res.locals.role, permissions: res.locals.permissions ?? [] });
+    res.json({
+      user: staff,
+      userId: res.locals.userId,
+      role: res.locals.role,
+      permissions: res.locals.permissions ?? [],
+    });
   });
 
+  router.use('/referrals', referralsRouter(deps));
+  router.use('/casework', caseworkRouter(deps));
   router.use('/config', configRouter(deps));
 
   return router;

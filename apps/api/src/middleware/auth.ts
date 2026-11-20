@@ -58,6 +58,7 @@ export const makeRequireStaff = (deps: AppDeps) => {
     }
 
     res.locals.staff = user;
+    res.locals.userId = user.id;
     res.locals.role = user.role;
     res.locals.permissions = permissionsForRole(user.role);
     next();
