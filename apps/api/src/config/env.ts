@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { z } from 'zod';
-import type { Zone } from '@ada/shared';
+import { zoneFromEnv, type Zone } from '@ada/shared';
 
 /**
  * Environment. Parsed once at boot; a missing or malformed value stops the
@@ -42,7 +42,23 @@ const baseSchema = z.object({
 export type Env = z.infer<typeof baseSchema> & { zone: Zone };
 
 export const loadEnv = (source: NodeJS.ProcessEnv = process.env): Env => {
-  const parsed = baseSchema.safeParse(source);
+  const zone = zoneFromEnv(source.ZONE);
+  if (!zone) throw new Error(`ZONE must be "public" or "internal" (got ${String(source.ZONE)})`);
+
+  // Each zone connects as its own Postgres role. DATABASE_URL wins when set
+  // explicitly (containers, migrations); otherwise the zone picks its own role.
+  const resolved = { ...source };
+  if (!resolved.DATABASE_URL) {
+    resolved.DATABASE_URL = zone === 'public' ? resolved.DATABASE_URL_PUBLIC : resolved.DATABASE_URL_INTERNAL;
+  }
+
+  // An inherited PORT=0 (or nothing at all) must not put both zones on the same
+  // port: each zone has its own listen port.
+  if (!(Number(resolved.PORT) > 0)) {
+    resolved.PORT = zone === 'public' ? (resolved.PUBLIC_API_PORT ?? '4000') : (resolved.INTERNAL_API_PORT ?? '4001');
+  }
+
+  const parsed = baseSchema.safeParse(resolved);
   if (!parsed.success) {
     const detail = parsed.error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join('; ');
     throw new Error(`Invalid environment: ${detail}`);

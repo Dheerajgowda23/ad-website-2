@@ -1,4 +1,4 @@
-import type { Session } from 'express-session';
+import type { Store } from 'express-session';
 import type { Permission, Role, Zone } from '@ada/shared';
 import type { PrismaClient } from '@prisma/client';
 import type { Env } from './config/env.js';
@@ -40,7 +40,7 @@ export interface FlagStore {
 export interface AppDeps {
   env: Env;
   zone: Zone;
-  sessionStore: Session.Store;
+  sessionStore: Store;
   /** Absent only in hermetic tests. Routes that need data refuse without it. */
   prisma?: PrismaClient;
   /** Default reads users through Prisma; tests may supply a stub. */

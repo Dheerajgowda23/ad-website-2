@@ -1,3 +1,6 @@
+export const LEVELS = ['UG', 'PG'] as const;
+export type Level = (typeof LEVELS)[number];
+
 /**
  * The application state machine - handoff §4.
  *

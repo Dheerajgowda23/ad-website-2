@@ -593,7 +593,8 @@ model ZoneEvent {
 /// to a single application (applicationId travels inside `sess`).
 model SessionPublic {
   sid    String   @id
-  sess   Json
+  /// `json`, not `jsonb`: connect-pg-simple writes a text parameter into this column.
+  sess   Json     @db.Json
   expire DateTime
 
   @@index([expire])
@@ -603,7 +604,7 @@ model SessionPublic {
 /// Backing table for connect-pg-simple in the internal zone.
 model SessionStaff {
   sid    String   @id
-  sess   Json
+  sess   Json     @db.Json
   expire DateTime
 
   @@index([expire])

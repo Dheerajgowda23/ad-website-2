@@ -32,7 +32,9 @@ export const makeRequireStaff = (deps: AppDeps) => {
   const load = deps.loadStaffUser ?? ((id: string) => staffPrincipalFromDb(deps, id));
 
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-    const auth = req.session.auth;
+    // The session may already be gone: zoneClaimGuard destroys a session whose
+    // zone claim disagrees with this process before the guard runs.
+    const auth = req.session?.auth;
     if (!auth || auth.kind !== 'staff' || !auth.userId) {
       next(unauthorized());
       return;
@@ -50,7 +52,7 @@ export const makeRequireStaff = (deps: AppDeps) => {
 
     const user = await load(auth.userId);
     if (!user || !user.isActive || ROLE_ZONE[user.role] !== deps.zone) {
-      req.session.destroy(() => undefined);
+      req.session?.destroy(() => undefined);
       next(unauthorized());
       return;
     }
@@ -100,7 +102,7 @@ export const requirePermission = (deps: AppDeps, permission: Permission) => {
 /** Public zone: the student session is scoped to exactly one application. */
 export const makeRequireStudent = (deps: AppDeps) => {
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-    const auth = req.session.auth;
+    const auth = req.session?.auth;
     if (!auth || auth.kind !== 'student' || !auth.applicationId || auth.zone !== 'public') {
       next(unauthorized());
       return;

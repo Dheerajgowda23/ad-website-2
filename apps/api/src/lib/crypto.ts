@@ -1,6 +1,6 @@
 import { createHmac, randomBytes, randomInt, timingSafeEqual, createHash } from 'node:crypto';
 import { hash as argonHash, verify as argonVerify } from '@node-rs/argon2';
-import { CODE_ALPHABET, checksumForBody } from '@ada/shared';
+import { CODE_ALPHABET, CODE_BODY_LENGTH, checksumForBody } from '@ada/shared';
 
 export const sha256Hex = (value: string | Buffer): string =>
   createHash('sha256').update(value).digest('hex');
@@ -74,14 +74,14 @@ export const randomId = (bytes = 16): string => randomBytes(bytes).toString('bas
 // --- Referral code ---------------------------------------------------------
 
 /**
- * Eight symbols from the 32-symbol alphabet (no 0/O, 1/I/L), grouped XXXX-XXXX,
- * plus the checksum character. Returned once, at issue; never stored in clear.
+ * Seven random symbols from the 32-symbol alphabet (no 0/O, 1/I/L) followed by
+ * the checksum symbol: eight characters, grouped XXXX-XXXX. Returned once, at
+ * issue; only the HMAC is stored.
  */
 export const generateReferralBody = (): string => {
-  let body = '';
-  for (let i = 0; i < 8; i += 1) body += CODE_ALPHABET[randomInt(0, CODE_ALPHABET.length)];
-  const checksum = checksumForBody(body);
-  return `${body.slice(0, 4)}-${body.slice(4)}${checksum}`;
+  let payload = '';
+  for (let i = 0; i < CODE_BODY_LENGTH - 1; i += 1) payload += CODE_ALPHABET[randomInt(0, CODE_ALPHABET.length)];
+  return `${payload}${checksumForBody(payload)}`;
 };
 
 // --- Base32 (TOTP secrets) -------------------------------------------------
