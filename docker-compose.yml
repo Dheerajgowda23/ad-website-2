@@ -1,9 +1,11 @@
 # ADA Internship Portal - M0 skeleton.
 #
-#   db            PostgreSQL 16, schema owned by portal_owner, grants for the
-#                 two zone roles applied from db/grants.sql on first boot.
-#   api-public    Express 5, ZONE=public   (internet / DMZ)
-#   api-internal  Express 5, ZONE=internal (air-gapped intranet)
+#   db            PostgreSQL 16, schema owned by portal_owner, roles created on
+#                 first boot from db/grants.sql.
+#   migrate       one-shot: applies Prisma migrations with the owner role, then
+#                 exits. Both zones wait for it.
+#   api-public    Express 5, ZONE=public   (internet / DMZ)      :4000
+#   api-internal  Express 5, ZONE=internal (air-gapped intranet) :4001
 #
 # The two API containers are the *same image with a different ZONE*; that is the
 # point. They differ only in which router tree is mounted and which DB role they
@@ -28,17 +30,31 @@ services:
       timeout: 5s
       retries: 20
 
-  api-public:
+  migrate:
+    image: ada-portal-api:dev
     build:
       context: .
       dockerfile: Dockerfile.api
+    container_name: ada-migrate
+    environment:
+      # Schema changes are the owner's job. The zone roles never hold DDL rights.
+      # Containers reach Postgres at the compose service name, not localhost.
+      DATABASE_URL: postgresql://${POSTGRES_USER:-portal_owner}:${POSTGRES_PASSWORD:-portal_owner_dev_pw}@db:5432/${POSTGRES_DB:-ada_portal}?schema=public
+    depends_on:
+      db:
+        condition: service_healthy
+    command: sh -c "npm run db:migrate -w @ada/api"
+    restart: "no"
+
+  api-public:
+    image: ada-portal-api:dev
     container_name: ada-api-public
     environment:
       ZONE: public
       PORT: 4000
       PORTAL_ENV: ${PORTAL_ENV:-development}
       ALLOW_DEV_OTP: ${ALLOW_DEV_OTP:-true}
-      DATABASE_URL: ${DATABASE_URL_PUBLIC}
+      DATABASE_URL: postgresql://portal_public:${PORTAL_PUBLIC_DB_PASSWORD:-portal_public_dev_pw}@db:5432/${POSTGRES_DB:-ada_portal}?schema=public
       SESSION_SECRET: ${SESSION_SECRET}
       OTP_PEPPER: ${OTP_PEPPER}
       REFERRAL_HMAC_PEPPER: ${REFERRAL_HMAC_PEPPER}
@@ -50,19 +66,23 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    command: sh -c "npm run db:migrate -w @ada/api && node --import tsx apps/api/src/index.ts"
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:4000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 10s
+      timeout: 5s
+      retries: 12
 
   api-internal:
-    build:
-      context: .
-      dockerfile: Dockerfile.api
+    image: ada-portal-api:dev
     container_name: ada-api-internal
     environment:
       ZONE: internal
       PORT: 4001
       PORTAL_ENV: ${PORTAL_ENV:-development}
       ALLOW_DEV_OTP: ${ALLOW_DEV_OTP:-true}
-      DATABASE_URL: ${DATABASE_URL_INTERNAL}
+      DATABASE_URL: postgresql://portal_internal:${PORTAL_INTERNAL_DB_PASSWORD:-portal_internal_dev_pw}@db:5432/${POSTGRES_DB:-ada_portal}?schema=public
       SESSION_SECRET: ${SESSION_SECRET}
       OTP_PEPPER: ${OTP_PEPPER}
       REFERRAL_HMAC_PEPPER: ${REFERRAL_HMAC_PEPPER}
@@ -74,7 +94,13 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    command: sh -c "npm run db:migrate -w @ada/api && node --import tsx apps/api/src/index.ts"
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:4001/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 10s
+      timeout: 5s
+      retries: 12
 
 volumes:
   ada_pgdata:

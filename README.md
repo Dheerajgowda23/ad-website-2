@@ -19,28 +19,53 @@ prisma              schema + first migration (apps/api/prisma)
 
 ## Run it
 
+Everything in containers:
+
 ```bash
-cp .env.example .env          # development values only
-docker compose up -d db       # Postgres 16 on :5433, roles created on first boot
+cp .env.example .env      # development values only
+docker compose up -d      # db + migrate (one-shot) + both API zones
+```
+
+That gives `:4000` (public) and `:4001` (internal) from the **same image**, so the only difference
+between the two services is `ZONE` and the Postgres role they connect as. Seed once with the owner
+credentials, then run the two web builds on the host:
+
+```bash
 npm install
-npm run db:generate
-npm run db:migrate
-npm run db:seed               # prints one account per role and the referral codes
+npm run db:seed           # prints one account per role and the referral codes
+npm run dev:public        # :5173  internet zone
+npm run dev:internal      # :5174  intranet zone
 ```
 
-Then three processes:
+Running the API on the host instead of in containers:
 
 ```bash
-npm run dev:api:public        # :4000  ZONE=public   -> /api/public/* only
-npm run dev:api:internal      # :4001  ZONE=internal -> /api/staff/* only
-npm run dev:public            # :5173  internet zone
-npm run dev:internal          # :5174  intranet zone
+npm run db:generate && npm run db:migrate
+npm run dev:api:public    # :4000  ZONE=public   -> /api/public/* only
+npm run dev:api:internal  # :4001  ZONE=internal -> /api/staff/* only
 ```
 
-`docker compose up` also builds and runs both API zones in containers, sharing the one database.
+Notes on the compose stack:
 
-Sign-in was verified against a running Postgres, not just unit tests; the seed prints the exact
-codes to use.
+- Containers reach Postgres at `db:5432`; the host uses `localhost:5433`. `docker-compose.yml`
+  derives the in-container URLs from the service name, so the `localhost` URLs in `.env` are for
+  host tools and tests only.
+- `migrate` runs `prisma migrate deploy` as `portal_owner` and exits; both APIs wait for it. Schema
+  changes never run as a zone role.
+- The image installs `openssl`, without which Prisma cannot pick its query engine on a slim base.
+
+## Tests
+
+```bash
+docker compose up -d db   # required: the login-flow tests use a real Postgres
+npm test
+```
+
+`tests/pg/login-flow.test.ts` drives referral redemption, email OTP and TOTP against the real
+Express app as the real runtime roles (`portal_public`, `portal_internal`), including a real
+`session_public` / `session_staff` row. A missing table grant fails an assertion there instead of
+surfacing as a 500 in the portal — revoke `SELECT ON sponsors FROM portal_public` and four tests go
+red. The other suites stay hermetic (no database needed).
 
 ## The zone split, and how to check it
 
