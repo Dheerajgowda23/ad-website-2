@@ -1,0 +1,28 @@
+{
+  "name": "ada-internship-portal",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build:shared": "npm run build -w @ada/shared",
+    "dev:api:public": "npm run dev -w @ada/api -- --zone public",
+    "dev:api:internal": "npm run dev -w @ada/api -- --zone internal",
+    "dev:public": "npm run dev -w @ada/web-public",
+    "dev:internal": "npm run dev -w @ada/web-internal",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm test -w @ada/api",
+    "db:generate": "npm run db:generate -w @ada/api",
+    "db:migrate": "npm run db:migrate -w @ada/api",
+    "db:seed": "npm run db:seed -w @ada/api"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3"
+  }
+}

@@ -1,0 +1,629 @@
+// ADA Internship & Project Work Portal - Prisma schema (M1)
+//
+// Source of truth: CODE-HANDOFF.md §5. Every base table from that section is
+// here. Column names are snake_case in the database and camelCase in the client.
+//
+// Two rules with teeth live in this file:
+//   * no full Aadhaar number - only aadhaar_last4 plus a keyed aadhaar_ref_hash;
+//   * nothing is hard-deleted - the soft-delete columns are the only delete path.
+//
+// Prisma runs as the schema owner during migrations only. At runtime each zone
+// connects as its own Postgres role (portal_public / portal_internal, db/grants.sql).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  STUDENT
+  SPONSOR
+  GUIDE
+  DIRECTORATE_HEAD
+  ADMIN_HR
+  COMMITTEE
+  DIRECTOR
+  SECURITY
+}
+
+/// The zone a session was issued in. A public session is worthless internally.
+enum Zone {
+  public
+  internal
+}
+
+enum Level {
+  UG
+  PG
+}
+
+enum EntryChannel {
+  REFERRED
+  OPEN
+  POSTAL
+}
+
+enum SponsorVerificationStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum ApplicationStatus {
+  INVITED
+  IN_PROGRESS
+  SUBMITTED
+  RETURNED_FOR_CORRECTION
+  HR_SCREENING
+  REJECTED_ELIGIBILITY
+  COMMITTEE_REVIEW
+  NOT_RECOMMENDED
+  DIRECTOR_DECISION
+  REJECTED
+  OFFER_ISSUED
+  ACCEPTED
+  DOCUMENT_VERIFIED
+  SECURITY_PASS
+  IN_TRAINING
+  COMPLETED
+  CERTIFICATE_ISSUED
+  WITHDRAWN
+  CANCELLED
+  EXPIRED
+}
+
+enum DocumentKind {
+  COLLEGE_LETTER
+  RECOMMENDATION_LETTER
+  UNDERTAKING
+  PHOTO
+  SIGNED_DECLARATION
+  POLICE_CLEARANCE
+  ID_PROOF
+  PROGRESS_REPORT
+  OTHER
+}
+
+enum CommitteeRole {
+  CHAIR
+  MEMBER
+}
+
+enum ReviewRecommendation {
+  RECOMMEND
+  NOT_RECOMMEND
+  REFER
+}
+
+enum FileScanStatus {
+  PENDING
+  CLEAN
+  INFECTED
+  FAILED
+}
+
+enum NotificationChannel {
+  EMAIL
+  SMS
+}
+
+enum NotificationStatus {
+  QUEUED
+  SENT
+  FAILED
+}
+
+enum OtpPurpose {
+  STAFF_LOGIN
+  STUDENT_EMAIL
+  SPONSOR_EMAIL
+}
+
+enum LabType {
+  ADA
+  DRDO_OTHER
+}
+
+// ---------------------------------------------------------------------------
+// People and organisation
+// ---------------------------------------------------------------------------
+
+model User {
+  id             String    @id @default(cuid())
+  role           Role
+  name           String
+  email          String    @unique
+  phone          String?
+  employeeCode   String?   @unique
+  directorateId  String?   @map("directorate_id")
+  isActive       Boolean   @default(true) @map("is_active")
+  /// Base32 TOTP secret. Present for every staff account; TOTP is the second factor.
+  totpSecret     String?   @map("totp_secret")
+  totpEnrolledAt DateTime? @map("totp_enrolled_at")
+  lastLoginAt    DateTime? @map("last_login_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+  deletedAt      DateTime? @map("deleted_at")
+
+  directorate         Directorate?          @relation(fields: [directorateId], references: [id])
+  sponsorProfile      Sponsor?
+  committeeSeats      CommitteeAssignment[]
+  reviews             Review[]
+  guidedAssignments   DirectorateAssignment[] @relation("GuideAssignments")
+  auditEntries        AuditLog[]
+
+  @@index([role])
+  @@map("users")
+}
+
+model Directorate {
+  id         String   @id @default(cuid())
+  name       String
+  code       String   @unique
+  ugCapacity Int      @default(0) @map("ug_capacity")
+  pgCapacity Int      @default(0) @map("pg_capacity")
+  isActive   Boolean  @default(true) @map("is_active")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  users       User[]
+  assignments DirectorateAssignment[]
+  applications Application[]
+
+  @@map("directorates")
+}
+
+model Lab {
+  id             String   @id @default(cuid())
+  name           String
+  code           String   @unique
+  type           LabType  @default(DRDO_OTHER)
+  nodalOfficerId String?  @map("nodal_officer_id")
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  sponsors      Sponsor[]
+  referralCodes ReferralCode[]
+  applications  Application[]
+
+  @@map("labs")
+}
+
+model Sponsor {
+  id                 String                    @id @default(cuid())
+  labId              String                    @map("lab_id")
+  userId             String?                   @unique @map("user_id")
+  fullName           String                    @map("full_name")
+  officialEmail      String                    @map("official_email")
+  employeeRef        String?                   @map("employee_ref")
+  verificationStatus SponsorVerificationStatus @default(PENDING) @map("verification_status")
+  verifiedBy         String?                   @map("verified_by")
+  verifiedAt         DateTime?                 @map("verified_at")
+  quotaYear          Int                       @map("quota_year")
+  quotaUsed          Int                       @default(0) @map("quota_used")
+  isActive           Boolean                   @default(true) @map("is_active")
+  createdAt          DateTime                  @default(now()) @map("created_at")
+
+  lab           Lab            @relation(fields: [labId], references: [id])
+  user          User?          @relation(fields: [userId], references: [id])
+  referralCodes ReferralCode[]
+  applications  Application[]
+
+  @@unique([officialEmail, quotaYear])
+  @@map("sponsors")
+}
+
+// ---------------------------------------------------------------------------
+// Invitation channel - the only way in
+// ---------------------------------------------------------------------------
+
+model IntakeYear {
+  id                    String    @id @default(cuid())
+  year                  Int       @unique
+  seatPlanPublishedAt   DateTime? @map("seat_plan_published_at")
+  noticeVersion         String?   @map("notice_version")
+  /// Open applications are disabled by policy; the flag exists so the decision is explicit.
+  openChannelEnabled    Boolean   @default(false) @map("open_channel_enabled")
+  createdAt             DateTime  @default(now()) @map("created_at")
+
+  @@map("intake_years")
+}
+
+model ReferralCode {
+  id                  String    @id @default(cuid())
+  /// HMAC-SHA256(code, pepper). The plaintext code is shown once, at issue.
+  codeHmac            String    @unique @map("code_hmac")
+  codePrefix          String    @map("code_prefix")
+  sponsorId           String    @map("sponsor_id")
+  labId               String    @map("lab_id")
+  level               Level
+  intakeYear          Int       @map("intake_year")
+  expiresAt           DateTime  @map("expires_at")
+  boundStudentEmail   String?   @map("bound_student_email")
+  boundAt             DateTime? @map("bound_at")
+  usedByApplicationId String?   @unique @map("used_by_application_id")
+  revokedAt           DateTime? @map("revoked_at")
+  revokedReason       String?   @map("revoked_reason")
+  issuedBy            String?   @map("issued_by")
+  issuedZone          Zone      @default(internal) @map("issued_zone")
+  emailSentAt         DateTime? @map("email_sent_at")
+  createdAt           DateTime  @default(now()) @map("created_at")
+
+  sponsor Sponsor      @relation(fields: [sponsorId], references: [id])
+  lab     Lab          @relation(fields: [labId], references: [id])
+  application Application?
+
+  @@index([expiresAt])
+  @@map("referral_codes")
+}
+
+// ---------------------------------------------------------------------------
+// The application
+// ---------------------------------------------------------------------------
+
+model Student {
+  id               String   @id @default(cuid())
+  /// Name and date of birth arrive with the paper form, not at referral redemption,
+  /// so both are nullable until the student fills the form.
+  fullName         String?  @map("full_name")
+  dob              DateTime? @db.Date
+  fatherName       String?  @map("father_name")
+  gender           String?
+  nationality      String   @default("Indian")
+  /// Last four digits only. Never the full number (§1.5).
+  aadhaarLast4     String?  @map("aadhaar_last4")
+  /// HMAC-SHA256 of the full number under a server-side key: de-duplication without storage.
+  aadhaarRefHash   String?  @map("aadhaar_ref_hash")
+  email            String
+  phone            String?
+  altPhone         String?  @map("alt_phone")
+  permanentAddress String?  @map("permanent_address")
+  localAddress     String?  @map("local_address")
+  photoFileId      String?  @map("photo_file_id")
+  intakeYear       Int      @map("intake_year")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  applications Application[]
+
+  /// One application per student per intake year, enforced two ways.
+  @@unique([aadhaarRefHash, intakeYear])
+  @@unique([email, intakeYear])
+  @@index([email])
+  @@map("students")
+}
+
+model Application {
+  id                   String            @id @default(cuid())
+  /// ADA/INT/R|O|P/<year>/<0001> - allocated from a Postgres sequence in the
+  /// submission transaction so it is never reused or visibly skipped.
+  applicationNo        String?           @unique @map("application_no")
+  entryChannel         EntryChannel      @map("entry_channel")
+  referralCodeId       String?           @unique @map("referral_code_id")
+  sponsorId            String?           @map("sponsor_id")
+  labId                String            @map("lab_id")
+  studentId            String            @map("student_id")
+  level                Level
+  discipline           String?
+  branchCode           String?           @map("branch_code")
+  degree               String?
+  semester             String?
+  yearOfStudy          String?           @map("year_of_study")
+  cgpa                 Decimal?          @db.Decimal(4, 2)
+  durationWeeks        Int?              @map("duration_weeks")
+  startDate            DateTime?         @db.Date @map("start_date")
+  endDate              DateTime?         @db.Date @map("end_date")
+  topic                String?
+  synopsis             String?
+  employeeChildFlag    Boolean           @default(false) @map("employee_child_flag")
+  status               ApplicationStatus @default(INVITED)
+  revision             Int               @default(0)
+  intakeYear           Int               @map("intake_year")
+  submittedAt          DateTime?         @map("submitted_at")
+  lastEditedAt         DateTime?         @map("last_edited_at")
+  collegeLetterVerifiedBy String?        @map("college_letter_verified_by")
+  collegeLetterVerifiedAt DateTime?      @map("college_letter_verified_at")
+  directorateAssignedBy   String?        @map("directorate_assigned_by")
+  directorateId           String?        @map("directorate_id")
+  committeeBatchId        String?        @map("committee_batch_id")
+  decisionAt           DateTime?         @map("decision_at")
+  decisionBy           String?           @map("decision_by")
+  rejectionReasonCode  String?           @map("rejection_reason_code")
+  cancellationReason   String?           @map("cancellation_reason")
+  withdrawnAt          DateTime?         @map("withdrawn_at")
+  createdAt            DateTime          @default(now()) @map("created_at")
+  updatedAt            DateTime          @updatedAt @map("updated_at")
+  deletedAt            DateTime?         @map("deleted_at")
+
+  referralCode    ReferralCode?  @relation(fields: [referralCodeId], references: [id])
+  sponsor         Sponsor?       @relation(fields: [sponsorId], references: [id])
+  lab             Lab            @relation(fields: [labId], references: [id])
+  student         Student        @relation(fields: [studentId], references: [id])
+  directorate     Directorate?   @relation(fields: [directorateId], references: [id])
+  revisions       ApplicationRevision[]
+  documents       Document[]
+  reviews         Review[]
+  assignments     DirectorateAssignment[]
+  offer           Offer?
+  joining         Joining?
+  attendance      Attendance[]
+  certificate     Certificate?
+  notifications   Notification[]
+
+  @@index([status])
+  @@index([intakeYear, level])
+  @@map("applications")
+}
+
+model ApplicationRevision {
+  id            String   @id @default(cuid())
+  applicationId String   @map("application_id")
+  revisionNo    Int      @map("revision_no")
+  snapshotJson  Json     @map("snapshot_json")
+  changedFields String[] @map("changed_fields")
+  sha256        String
+  submittedAt   DateTime @default(now()) @map("submitted_at")
+  ip            String?
+
+  application Application @relation(fields: [applicationId], references: [id])
+
+  @@unique([applicationId, revisionNo])
+  @@map("application_revisions")
+}
+
+model Document {
+  id            String         @id @default(cuid())
+  applicationId String         @map("application_id")
+  kind          DocumentKind
+  version       Int            @default(1)
+  supersedesId  String?        @map("supersedes_id")
+  fileId        String         @map("file_id")
+  sha256        String
+  uploadedAt    DateTime       @default(now()) @map("uploaded_at")
+  verifiedBy    String?        @map("verified_by")
+  verifiedAt    DateTime?      @map("verified_at")
+  deletedAt     DateTime?      @map("deleted_at")
+
+  application Application @relation(fields: [applicationId], references: [id])
+  supersedes  Document?   @relation("DocumentVersions", fields: [supersedesId], references: [id])
+  versions    Document[]  @relation("DocumentVersions")
+
+  @@unique([applicationId, kind, version])
+  @@map("documents")
+}
+
+model Review {
+  id                String               @id @default(cuid())
+  applicationId     String               @map("application_id")
+  committeeMemberId String               @map("committee_member_id")
+  score             Decimal?             @db.Decimal(5, 2)
+  remarks           String?
+  recommendation    ReviewRecommendation?
+  submittedAt       DateTime?            @map("submitted_at")
+  createdAt         DateTime             @default(now()) @map("created_at")
+
+  application     Application @relation(fields: [applicationId], references: [id])
+  committeeMember User        @relation(fields: [committeeMemberId], references: [id])
+
+  @@unique([applicationId, committeeMemberId])
+  @@map("reviews")
+}
+
+model CommitteeAssignment {
+  id          String        @id @default(cuid())
+  intakeYear  Int           @map("intake_year")
+  batchId     String        @map("batch_id")
+  userId      String        @map("user_id")
+  role        CommitteeRole @default(MEMBER)
+  assignedBy  String        @map("assigned_by")
+  assignedAt  DateTime      @default(now()) @map("assigned_at")
+  isActive    Boolean       @default(true) @map("is_active")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([batchId, userId])
+  @@map("committee_assignments")
+}
+
+model DirectorateAssignment {
+  id            String   @id @default(cuid())
+  applicationId String   @map("application_id")
+  directorateId String   @map("directorate_id")
+  guideId       String?  @map("guide_id")
+  assignedBy    String   @map("assigned_by")
+  assignedAt    DateTime @default(now()) @map("assigned_at")
+  isActive      Boolean  @default(true) @map("is_active")
+
+  application Application @relation(fields: [applicationId], references: [id])
+  directorate Directorate @relation(fields: [directorateId], references: [id])
+  guide       User?       @relation("GuideAssignments", fields: [guideId], references: [id])
+
+  @@index([guideId])
+  @@map("directorate_assignments")
+}
+
+model Offer {
+  id            String   @id @default(cuid())
+  applicationId String   @unique @map("application_id")
+  guideId       String?  @map("guide_id")
+  issuedAt      DateTime @default(now()) @map("issued_at")
+  reportingDate DateTime? @db.Date @map("reporting_date")
+  acceptedAt    DateTime? @map("accepted_at")
+  declinedAt    DateTime? @map("declined_at")
+  pdfFileId     String?  @map("pdf_file_id")
+
+  application Application @relation(fields: [applicationId], references: [id])
+
+  @@map("offers")
+}
+
+model Joining {
+  id                   String    @id @default(cuid())
+  applicationId        String    @unique @map("application_id")
+  policeClearanceFileId String?  @map("police_clearance_file_id")
+  idProofFileId        String?   @map("id_proof_file_id")
+  verifiedBy           String?   @map("verified_by")
+  verifiedAt           DateTime? @map("verified_at")
+  passNo               String?   @unique @map("pass_no")
+  passIssuedAt         DateTime? @map("pass_issued_at")
+
+  application Application @relation(fields: [applicationId], references: [id])
+
+  @@map("joining")
+}
+
+model Attendance {
+  id            String   @id @default(cuid())
+  applicationId String   @map("application_id")
+  /// YYYY-MM
+  month         String
+  presentDays   Int      @map("present_days")
+  totalDays     Int      @map("total_days")
+  enteredBy     String?  @map("entered_by")
+  enteredAt     DateTime @default(now()) @map("entered_at")
+
+  application Application @relation(fields: [applicationId], references: [id])
+
+  @@unique([applicationId, month])
+  @@map("attendance")
+}
+
+model Certificate {
+  id            String    @id @default(cuid())
+  applicationId String    @unique @map("application_id")
+  serialNo      String    @unique @map("serial_no")
+  issuedAt      DateTime  @default(now()) @map("issued_at")
+  issuedBy      String    @map("issued_by")
+  pdfFileId     String?   @map("pdf_file_id")
+  revokedAt     DateTime? @map("revoked_at")
+
+  application Application @relation(fields: [applicationId], references: [id])
+
+  @@map("certificates")
+}
+
+// ---------------------------------------------------------------------------
+// Cross-cutting: audit, notifications, files, zones, sessions, OTP
+// ---------------------------------------------------------------------------
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  actorId   String?  @map("actor_id")
+  actorRole Role     @map("actor_role")
+  action    String
+  entity    String
+  entityId  String?  @map("entity_id")
+  before    Json?
+  after     Json?
+  reason    String?
+  ip        String?
+  at        DateTime @default(now())
+  zone      Zone     @default(internal)
+
+  actor User? @relation(fields: [actorId], references: [id])
+
+  @@index([entity, entityId])
+  @@index([at])
+  @@map("audit_log")
+}
+
+model Notification {
+  id            String              @id @default(cuid())
+  applicationId String?             @map("application_id")
+  channel       NotificationChannel @default(EMAIL)
+  template      String
+  to            String
+  sentAt        DateTime?           @map("sent_at")
+  providerId    String?             @map("provider_id")
+  status        NotificationStatus  @default(QUEUED)
+  createdAt     DateTime            @default(now()) @map("created_at")
+
+  application Application? @relation(fields: [applicationId], references: [id])
+
+  @@index([status])
+  @@map("notifications")
+}
+
+model FileObject {
+  id            String         @id @default(cuid())
+  storageKey    String         @unique @map("storage_key")
+  mime          String
+  size          Int
+  sha256        String
+  uploadedBy    String?        @map("uploaded_by")
+  scanStatus    FileScanStatus @default(PENDING) @map("scan_status")
+  quarantinedAt DateTime?      @map("quarantined_at")
+  createdAt     DateTime       @default(now()) @map("created_at")
+  deletedAt     DateTime?      @map("deleted_at")
+
+  @@map("files")
+}
+
+model FeatureFlag {
+  key             String   @id
+  zonePublic      Boolean  @default(false) @map("zone_public")
+  zoneInternal    Boolean  @default(false) @map("zone_internal")
+  /// Never enabled on the public zone, whatever the two booleans say.
+  isHardInternal  Boolean  @default(false) @map("is_hard_internal")
+  description     String?
+  updatedBy       String?  @map("updated_by")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@map("feature_flags")
+}
+
+model ZoneEvent {
+  id     String   @id @default(cuid())
+  zone   Zone
+  route  String
+  result String
+  ip     String?
+  at     DateTime @default(now())
+  meta   Json?
+
+  @@index([at])
+  @@map("zone_events")
+}
+
+/// Backing table for connect-pg-simple in the public zone. One session is scoped
+/// to a single application (applicationId travels inside `sess`).
+model SessionPublic {
+  sid    String   @id
+  sess   Json
+  expire DateTime
+
+  @@index([expire])
+  @@map("session_public")
+}
+
+/// Backing table for connect-pg-simple in the internal zone.
+model SessionStaff {
+  sid    String   @id
+  sess   Json
+  expire DateTime
+
+  @@index([expire])
+  @@map("session_staff")
+}
+
+model OtpChallenge {
+  id          String     @id @default(uuid())
+  /// SHA-256 of the normalised subject (email). The address itself is not needed to verify.
+  subjectHash String     @map("subject_hash")
+  purpose     OtpPurpose
+  /// argon2id hash of the six-digit code.
+  codeHash    String     @map("code_hash")
+  attempts    Int        @default(0)
+  expiresAt   DateTime   @map("expires_at")
+  consumedAt  DateTime?  @map("consumed_at")
+  ip          String?
+  payload     Json?
+  createdAt   DateTime   @default(now()) @map("created_at")
+
+  @@index([subjectHash, purpose])
+  @@map("otp_challenges")
+}

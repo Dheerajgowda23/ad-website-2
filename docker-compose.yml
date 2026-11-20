@@ -1,0 +1,80 @@
+# ADA Internship Portal - M0 skeleton.
+#
+#   db            PostgreSQL 16, schema owned by portal_owner, grants for the
+#                 two zone roles applied from db/grants.sql on first boot.
+#   api-public    Express 5, ZONE=public   (internet / DMZ)
+#   api-internal  Express 5, ZONE=internal (air-gapped intranet)
+#
+# The two API containers are the *same image with a different ZONE*; that is the
+# point. They differ only in which router tree is mounted and which DB role they
+# connect as.
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: ada-db
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-ada_portal}
+      POSTGRES_USER: ${POSTGRES_USER:-portal_owner}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-portal_owner_dev_pw}
+    ports:
+      - "5433:5432"
+    volumes:
+      - ada_pgdata:/var/lib/postgresql/data
+      - ./db/grants.sql:/docker-entrypoint-initdb.d/10-grants.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-portal_owner} -d ${POSTGRES_DB:-ada_portal}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  api-public:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: ada-api-public
+    environment:
+      ZONE: public
+      PORT: 4000
+      PORTAL_ENV: ${PORTAL_ENV:-development}
+      ALLOW_DEV_OTP: ${ALLOW_DEV_OTP:-true}
+      DATABASE_URL: ${DATABASE_URL_PUBLIC}
+      SESSION_SECRET: ${SESSION_SECRET}
+      OTP_PEPPER: ${OTP_PEPPER}
+      REFERRAL_HMAC_PEPPER: ${REFERRAL_HMAC_PEPPER}
+      TOTP_PEPPER: ${TOTP_PEPPER}
+      PUBLIC_APP_ORIGIN: ${PUBLIC_APP_ORIGIN:-http://localhost:5173}
+      INTERNAL_APP_ORIGIN: ${INTERNAL_APP_ORIGIN:-http://localhost:5174}
+    ports:
+      - "4000:4000"
+    depends_on:
+      db:
+        condition: service_healthy
+    command: sh -c "npm run db:migrate -w @ada/api && node --import tsx apps/api/src/index.ts"
+
+  api-internal:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: ada-api-internal
+    environment:
+      ZONE: internal
+      PORT: 4001
+      PORTAL_ENV: ${PORTAL_ENV:-development}
+      ALLOW_DEV_OTP: ${ALLOW_DEV_OTP:-true}
+      DATABASE_URL: ${DATABASE_URL_INTERNAL}
+      SESSION_SECRET: ${SESSION_SECRET}
+      OTP_PEPPER: ${OTP_PEPPER}
+      REFERRAL_HMAC_PEPPER: ${REFERRAL_HMAC_PEPPER}
+      TOTP_PEPPER: ${TOTP_PEPPER}
+      PUBLIC_APP_ORIGIN: ${PUBLIC_APP_ORIGIN:-http://localhost:5173}
+      INTERNAL_APP_ORIGIN: ${INTERNAL_APP_ORIGIN:-http://localhost:5174}
+    ports:
+      - "4001:4001"
+    depends_on:
+      db:
+        condition: service_healthy
+    command: sh -c "npm run db:migrate -w @ada/api && node --import tsx apps/api/src/index.ts"
+
+volumes:
+  ada_pgdata:
