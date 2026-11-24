@@ -4,9 +4,10 @@ Internship and project-work intake for the **Aeronautical Development Agency**, 
 lab). One pipeline, one codebase, one database — split across an internet zone and an air-gapped
 intranet zone.
 
-This repository is at **milestone M2**: a runnable skeleton (M0), the Prisma schema and first
-migration (M1), and role-based login with the zone split enforced (M2) — see the CODE-HANDOFF
-contract for the milestone list.
+This repository covers **M0–M6**: the runnable skeleton, Prisma schema and migrations, the
+zone-split login (M2), the referral → application → screening → seat → reporting → certificate
+pipeline (M3–M5), and PDF documents, notifications, feature flags and CSV export (M6). See the
+CODE-HANDOFF contract for the milestone list.
 
 ```
 apps/api            Express 5 + TypeScript, ZONE=public|internal, Prisma 6
@@ -164,6 +165,8 @@ bound to the first verified email in a single transaction and an application is 
 
 ## Not in this milestone
 
-The student form, uploads, screening, committee packets, offers, attendance, certificates, PDFs,
-MinIO/ClamAV, pg-boss jobs, LDAP, RLS policies and Playwright flows. The two Postgres roles and
-their grants are in place; row-level security is a later migration.
+Uploads are stored as document metadata rows only — MinIO/ClamAV object storage and virus
+scanning are not wired yet, so the scan itself must be added before go-live. Also out of scope:
+background jobs, LDAP, row-level security policies, Playwright end-to-end flows, fingerprint
+attendance devices, and the post-project backlog from the handoff (SMS, bilingual UI, analytics,
+plagiarism checks).

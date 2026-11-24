@@ -12,7 +12,8 @@
     "db:migrate": "prisma migrate deploy",
     "db:migrate:dev": "prisma migrate dev",
     "db:seed": "node --import tsx src/seed.ts",
-    "totp": "node --import tsx src/scripts/totp-code.ts"
+    "totp": "node --import tsx src/scripts/totp-code.ts",
+    "issue-code": "node --import tsx src/scripts/issue-code.ts"
   },
   "dependencies": {
     "@ada/shared": "*",
