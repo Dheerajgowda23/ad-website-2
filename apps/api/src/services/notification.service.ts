@@ -185,3 +185,19 @@ export async function notifyCertificateIssued(
     template: `CERTIFICATE_ISSUED: Official Certificate ${serialNo} has been issued for your training at ADA. You can download or verify it online.`,
   });
 }
+
+/** Admin & HR chasing a sponsor for a candidate who has not advanced. */
+export async function notifySponsorReminder(
+  deps: { prisma: PrismaClient },
+  applicationId: string,
+  sponsorEmail: string,
+  applicationNo: string,
+  studentName: string,
+  reason: string,
+) {
+  return queueNotification(deps, {
+    applicationId,
+    to: sponsorEmail,
+    template: `SPONSOR_REMINDER: Application ${applicationNo} for ${studentName} needs your attention: ${reason}`,
+  });
+}

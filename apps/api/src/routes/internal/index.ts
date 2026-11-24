@@ -5,6 +5,7 @@ import { staffAuthRouter } from './auth.js';
 import { configRouter } from './config.js';
 import { referralsRouter } from './referrals.js';
 import { caseworkRouter } from './casework.js';
+import { staffUsersRouter } from './staff.js';
 
 /**
  * The intranet router tree. Mounted by createApp only when ZONE=internal; in the
@@ -32,6 +33,7 @@ export const staffRouter = (deps: AppDeps): Router => {
   router.use('/referrals', referralsRouter(deps));
   router.use('/casework', caseworkRouter(deps));
   router.use('/config', configRouter(deps));
+  router.use('/users', staffUsersRouter(deps));
 
   return router;
 };

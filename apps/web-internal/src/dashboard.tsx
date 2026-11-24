@@ -73,6 +73,10 @@ export const DashboardPage = () => {
   const [selectedAppId, setSelectedAppId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [attendanceCsv, setAttendanceCsv] = useState('');
+  const [staffNotice, setStaffNotice] = useState('');
+  const [staffForm, setStaffForm] = useState({ name: '', email: '', role: 'GUIDE', employeeCode: '' });
 
   // Modals & Action dialogs
   const [showReferralModal, setShowReferralModal] = useState(false);
@@ -163,6 +167,75 @@ export const DashboardPage = () => {
     queryKey: ['attendanceReport', attendanceMonth],
     queryFn: () => api(`/api/staff/casework/attendance/report?month=${attendanceMonth}`),
     enabled: permissions.includes('reporting:read') && activeTab === 'attendance',
+  });
+
+  const staffQuery = useQuery<{ users: any[] }>({
+    queryKey: ['staffUsers'],
+    queryFn: () => api('/api/staff/users'),
+    enabled: permissions.includes('user:manage') && activeTab === 'staff',
+  });
+
+  // Bulk casework: one request, per-row results back.
+  const bulkMut = useMutation({
+    mutationFn: (input: { action: string; ids: string[]; reason?: string }) =>
+      api('/api/staff/casework/applications/bulk', { method: 'POST', body: JSON.stringify(input) }),
+    onSuccess: (result: any) => {
+      alert(`${result.succeeded} updated, ${result.failed} failed`);
+      setSelectedIds([]);
+      queryClient.invalidateQueries({ queryKey: ['applications'] });
+      queryClient.invalidateQueries({ queryKey: ['auditLogs'] });
+    },
+    onError: (err: Error) => alert(err.message),
+  });
+
+  const importAttendanceMut = useMutation({
+    mutationFn: () =>
+      api('/api/staff/casework/attendance/import', {
+        method: 'POST',
+        body: JSON.stringify({ csv: attendanceCsv }),
+      }),
+    onSuccess: (result: any) => {
+      setStaffNotice(`Imported ${result.imported} rows, ${result.failed} failed.`);
+      setAttendanceCsv('');
+      queryClient.invalidateQueries({ queryKey: ['attendanceReport'] });
+    },
+    onError: (err: Error) => setStaffNotice(err.message),
+  });
+
+  const createStaffMut = useMutation({
+    mutationFn: () =>
+      api('/api/staff/users', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: staffForm.name,
+          email: staffForm.email,
+          role: staffForm.role,
+          employeeCode: staffForm.employeeCode || null,
+        }),
+      }),
+    onSuccess: () => {
+      setStaffNotice('Account created. The person can sign in and enrol an authenticator.');
+      setStaffForm({ name: '', email: '', role: 'GUIDE', employeeCode: '' });
+      queryClient.invalidateQueries({ queryKey: ['staffUsers'] });
+    },
+    onError: (err: Error) => setStaffNotice(err.message),
+  });
+
+  const updateStaffMut = useMutation({
+    mutationFn: ({ id, isActive }: { id: string; isActive: boolean }) =>
+      api(`/api/staff/users/${id}`, { method: 'PATCH', body: JSON.stringify({ isActive }) }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['staffUsers'] }),
+    onError: (err: Error) => setStaffNotice(err.message),
+  });
+
+  const resetAuthenticatorMut = useMutation({
+    mutationFn: (id: string) => api(`/api/staff/users/${id}/reset-authenticator`, { method: 'POST' }),
+    onSuccess: (result: any) => {
+      setStaffNotice(result.message);
+      queryClient.invalidateQueries({ queryKey: ['staffUsers'] });
+      queryClient.invalidateQueries({ queryKey: ['auditLogs'] });
+    },
+    onError: (err: Error) => setStaffNotice(err.message),
   });
 
   // Action Mutations
@@ -455,6 +528,14 @@ export const DashboardPage = () => {
                 Audit Trail
               </button>
             )}
+            {permissions.includes('user:manage') && (
+              <button
+                onClick={() => setActiveTab('staff')}
+                className={`px-3 py-1.5 rounded font-semibold transition ${activeTab === 'staff' ? 'bg-teal-600 text-white' : 'text-slate-300 hover:text-white'}`}
+              >
+                Staff & Access
+              </button>
+            )}
             <button
               onClick={() => setActiveTab('permissions')}
               className={`px-3 py-1.5 rounded font-semibold transition ${activeTab === 'permissions' ? 'bg-teal-600 text-white' : 'text-slate-300 hover:text-white'}`}
@@ -508,11 +589,59 @@ export const DashboardPage = () => {
               </div>
             </div>
 
+            {selectedIds.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2 rounded-lg border border-teal-200 bg-teal-50 p-3 text-xs">
+                <span className="font-bold text-teal-900">{selectedIds.length} selected</span>
+                <button
+                  onClick={() => {
+                    const reason = window.prompt('Reason for return (the student sees this)');
+                    if (reason) bulkMut.mutate({ action: 'RETURN', ids: selectedIds, reason });
+                  }}
+                  className="rounded border border-teal-300 bg-white px-2.5 py-1 font-semibold text-teal-900 hover:bg-teal-100"
+                >
+                  Return for correction
+                </button>
+                <button
+                  onClick={() => {
+                    const reason = window.prompt('Rejection reason (recorded in the audit trail)');
+                    if (reason && window.confirm(`Reject ${selectedIds.length} applications as ineligible?`)) {
+                      bulkMut.mutate({ action: 'REJECT', ids: selectedIds, reason });
+                    }
+                  }}
+                  className="rounded border border-red-300 bg-white px-2.5 py-1 font-semibold text-red-700 hover:bg-red-50"
+                >
+                  Reject eligibility
+                </button>
+                <button
+                  onClick={() => bulkMut.mutate({ action: 'REMIND', ids: selectedIds, reason: 'awaiting action from the sponsoring officer' })}
+                  className="rounded border border-slate-300 bg-white px-2.5 py-1 font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  Remind sponsors
+                </button>
+                <button onClick={() => setSelectedIds([])} className="ml-auto text-slate-500 hover:text-slate-800">
+                  Clear
+                </button>
+              </div>
+            )}
+
             {/* Applications Table */}
             <div className="rounded-lg border border-slate-200 bg-white overflow-hidden shadow-sm">
               <table className="w-full text-left text-xs">
                 <thead className="bg-slate-100 text-slate-700 uppercase font-semibold border-b border-slate-200">
                   <tr>
+                    <th className="p-3 w-8">
+                      <input
+                        type="checkbox"
+                        aria-label="Select all applications"
+                        checked={
+                          (applicationsQuery.data?.applications?.length ?? 0) > 0 &&
+                          selectedIds.length === (applicationsQuery.data?.applications?.length ?? 0)
+                        }
+                        onChange={(event) =>
+                          setSelectedIds(event.target.checked ? (applicationsQuery.data?.applications ?? []).map((a) => a.id) : [])
+                        }
+                      />
+                    </th>
                     <th className="p-3">Application No</th>
                     <th className="p-3">Candidate</th>
                     <th className="p-3">Level</th>
@@ -527,6 +656,20 @@ export const DashboardPage = () => {
                 <tbody className="divide-y divide-slate-100">
                   {(applicationsQuery.data?.applications ?? []).map((app) => (
                     <tr key={app.id} className="hover:bg-slate-50 transition">
+                      <td className="p-3">
+                        <input
+                          type="checkbox"
+                          aria-label={`Select ${app.applicationNo ?? app.studentName}`}
+                          checked={selectedIds.includes(app.id)}
+                          onChange={(event) =>
+                            setSelectedIds(
+                              event.target.checked
+                                ? [...selectedIds, app.id]
+                                : selectedIds.filter((selected) => selected !== app.id),
+                            )
+                          }
+                        />
+                      </td>
                       <td className="p-3 font-mono font-bold text-navy-950">{app.applicationNo ?? 'Draft'}</td>
                       <td className="p-3 font-semibold text-slate-900">{app.studentName}</td>
                       <td className="p-3"><span className="chip border-slate-200 bg-slate-50 font-bold">{app.level}</span></td>
@@ -553,7 +696,7 @@ export const DashboardPage = () => {
                   ))}
                   {(applicationsQuery.data?.applications?.length === 0) && (
                     <tr>
-                      <td colSpan={9} className="p-6 text-center text-slate-400">No applications found in this queue.</td>
+                      <td colSpan={10} className="p-6 text-center text-slate-400">No applications found in this queue.</td>
                     </tr>
                   )}
                 </tbody>
@@ -1295,6 +1438,37 @@ export const DashboardPage = () => {
               </div>
             </div>
 
+            {permissions.includes('attendance:write') && (
+              <div className="space-y-2 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+                <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                  Bulk import monthly attendance
+                </h3>
+                <p className="text-xs text-slate-500">
+                  One row per trainee: <code>applicationNo,month,presentDays,totalDays</code>. A header row is
+                  ignored. Rows that fail are reported back without stopping the rest.
+                </p>
+                <textarea
+                  className="field font-mono text-xs"
+                  rows={4}
+                  aria-label="Attendance CSV"
+                  value={attendanceCsv}
+                  onChange={(event) => setAttendanceCsv(event.target.value)}
+                  placeholder={'ADA/INT/R/2026/0001,' + attendanceMonth + ',22,22'}
+                />
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    className="btn"
+                    disabled={!attendanceCsv.trim() || importAttendanceMut.isPending}
+                    onClick={() => importAttendanceMut.mutate()}
+                  >
+                    {importAttendanceMut.isPending ? 'Importing…' : 'Import CSV'}
+                  </button>
+                  {staffNotice && <span className="text-xs text-slate-600">{staffNotice}</span>}
+                </div>
+              </div>
+            )}
+
             {attendanceQuery.isLoading && <p className="text-xs text-slate-500">Loading register…</p>}
             {attendanceQuery.isError && (
               <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
@@ -1357,6 +1531,141 @@ export const DashboardPage = () => {
                 </div>
               </>
             )}
+          </div>
+        )}
+
+        {/* ==================================================================== */}
+        {/* TAB 8c: STAFF ACCOUNTS */}
+        {/* ==================================================================== */}
+        {activeTab === 'staff' && (
+          <div className="space-y-4">
+            <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+              <div>
+                <h2 className="text-base font-bold text-navy-950">Staff accounts</h2>
+                <p className="mt-1 text-xs text-slate-500">
+                  Create intranet accounts, disable someone who has left, or reset a lost authenticator.
+                  A new account enrols its authenticator at first sign-in.
+                </p>
+              </div>
+
+              <form
+                className="grid gap-2 sm:grid-cols-5"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  createStaffMut.mutate();
+                }}
+              >
+                <input
+                  className="field"
+                  aria-label="Full name"
+                  placeholder="Full name"
+                  value={staffForm.name}
+                  onChange={(event) => setStaffForm({ ...staffForm, name: event.target.value })}
+                  required
+                  minLength={2}
+                />
+                <input
+                  className="field"
+                  type="email"
+                  aria-label="Official email"
+                  placeholder="name@ada.gov.in"
+                  value={staffForm.email}
+                  onChange={(event) => setStaffForm({ ...staffForm, email: event.target.value })}
+                  required
+                />
+                <select
+                  className="field"
+                  aria-label="Role"
+                  value={staffForm.role}
+                  onChange={(event) => setStaffForm({ ...staffForm, role: event.target.value })}
+                >
+                  {(['ADMIN_HR', 'DIRECTOR', 'COMMITTEE', 'SECURITY', 'GUIDE', 'DIRECTORATE_HEAD', 'SPONSOR'] as Role[]).map(
+                    (role) => (
+                      <option key={role} value={role}>
+                        {ROLE_LABELS[role]}
+                      </option>
+                    ),
+                  )}
+                </select>
+                <input
+                  className="field"
+                  aria-label="Employee code"
+                  placeholder="Employee code"
+                  value={staffForm.employeeCode}
+                  onChange={(event) => setStaffForm({ ...staffForm, employeeCode: event.target.value })}
+                />
+                <button type="submit" className="btn" disabled={createStaffMut.isPending}>
+                  {createStaffMut.isPending ? 'Creating…' : 'Create account'}
+                </button>
+              </form>
+              {staffNotice && <p className="text-xs text-slate-600">{staffNotice}</p>}
+            </div>
+
+            <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+              <table className="w-full text-left text-xs">
+                <thead className="border-b border-slate-200 bg-slate-100 font-semibold uppercase text-slate-700">
+                  <tr>
+                    <th className="p-3">Name</th>
+                    <th className="p-3">Email</th>
+                    <th className="p-3">Role</th>
+                    <th className="p-3">Authenticator</th>
+                    <th className="p-3">Last sign-in</th>
+                    <th className="p-3 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {(staffQuery.data?.users ?? []).map((person: any) => (
+                    <tr key={person.id} className={person.isActive ? '' : 'bg-slate-50 text-slate-400'}>
+                      <td className="p-3 font-semibold text-slate-900">
+                        {person.name}
+                        {!person.isActive && <span className="ml-2 chip border-slate-300 bg-white">Disabled</span>}
+                      </td>
+                      <td className="p-3">{person.email}</td>
+                      <td className="p-3">{person.roleLabel ?? person.role}</td>
+                      <td className="p-3">
+                        {person.authenticatorEnrolled ? (
+                          <span className="font-bold text-emerald-700">Enrolled</span>
+                        ) : (
+                          <span className="text-amber-700">At first sign-in</span>
+                        )}
+                      </td>
+                      <td className="p-3 font-mono text-[11px]">
+                        {person.lastLoginAt ? new Date(person.lastLoginAt).toLocaleString() : '—'}
+                      </td>
+                      <td className="p-3 text-right space-x-2">
+                        {person.authenticatorEnrolled && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (window.confirm(`Reset the authenticator for ${person.email}?`)) {
+                                resetAuthenticatorMut.mutate(person.id);
+                              }
+                            }}
+                            className="rounded border border-slate-300 bg-white px-2.5 py-1 font-semibold text-slate-700 hover:bg-slate-50"
+                          >
+                            Reset authenticator
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => updateStaffMut.mutate({ id: person.id, isActive: !person.isActive })}
+                          className="rounded border border-slate-300 bg-white px-2.5 py-1 font-semibold text-slate-700 hover:bg-slate-50"
+                        >
+                          {person.isActive ? 'Deactivate' : 'Reactivate'}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                  {staffQuery.data?.users?.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="p-4 text-center text-slate-500">
+                        No staff accounts yet.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
 

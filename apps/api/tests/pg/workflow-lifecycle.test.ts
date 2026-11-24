@@ -558,6 +558,53 @@ describe('Full End-to-End Workflow & Milestone Verification', () => {
     expect(packetRes.body.application.status).toBe('DIRECTOR_DECISION');
   });
 
+  it('M5: Admin & HR manages staff accounts and bulk-reminds sponsors', async () => {
+    const staffList = await adminHrAgent.get('/api/staff/users').expect(200);
+    expect(staffList.body.users.length).toBeGreaterThan(0);
+    expect(staffList.body.users.some((u: any) => u.role === 'ADMIN_HR')).toBe(true);
+    // Secrets never leave the database.
+    expect(JSON.stringify(staffList.body.users)).not.toContain('totpSecret');
+
+    const tempEmail = `temp-${Date.now()}@ada.gov.in`;
+    const created = await adminHrAgent
+      .post('/api/staff/users')
+      .send({ name: 'Temporary Officer', email: tempEmail, role: 'GUIDE', employeeCode: 'TMP-1' })
+      .expect(201);
+
+    expect(created.body.user.isActive).toBe(true);
+    expect(created.body.user.authenticatorEnrolled).toBe(false);
+
+    const disabled = await adminHrAgent
+      .patch(`/api/staff/users/${created.body.user.id}`)
+      .send({ isActive: false })
+      .expect(200);
+    expect(disabled.body.user.isActive).toBe(false);
+
+    const reset = await adminHrAgent
+      .post(`/api/staff/users/${created.body.user.id}/reset-authenticator`)
+      .expect(200);
+    expect(reset.body.reset).toBe(false);
+
+    // A non-ADA address and a student role are both refused.
+    await adminHrAgent
+      .post('/api/staff/users')
+      .send({ name: 'Outside Person', email: 'person@example.com', role: 'GUIDE' })
+      .expect(400);
+    await adminHrAgent
+      .post('/api/staff/users')
+      .send({ name: 'Student Account', email: `student-${Date.now()}@ada.gov.in`, role: 'STUDENT' })
+      .expect(400);
+
+    await owner.user.deleteMany({ where: { email: tempEmail } });
+
+    const reminded = await adminHrAgent
+      .post('/api/staff/casework/applications/bulk')
+      .send({ action: 'REMIND', ids: [createdApplicationId], reason: 'please confirm the candidate' })
+      .expect(200);
+    expect(reminded.body.succeeded).toBe(1);
+    expect(reminded.body.failed).toBe(0);
+  });
+
   it('M6: Director approves -> Offer issued -> Student accepts -> Seat ledger updates', async () => {
     // 1. Director approves
     const decideRes = await directorAgent
@@ -617,6 +664,24 @@ describe('Full End-to-End Workflow & Milestone Verification', () => {
         totalDays: 22,
       })
       .expect(200);
+
+    // 3a. Monthly attendance CSV import: valid rows land, bad rows are reported.
+    const attendanceRow = await owner.application.findUniqueOrThrow({
+      where: { id: createdApplicationId },
+      select: { applicationNo: true },
+    });
+    const imported = await guideAgent
+      .post('/api/staff/casework/attendance/import')
+      .send({
+        csv: [
+          'applicationNo,month,presentDays,totalDays',
+          `${attendanceRow.applicationNo},2026-07,20,22`,
+          'ADA/INT/R/1900/9999,2026-07,10,22',
+        ].join('\n'),
+      })
+      .expect(200);
+    expect(imported.body.imported).toBe(1);
+    expect(imported.body.failed).toBe(1);
 
     // 4. Guide completes training
     const compRes = await guideAgent

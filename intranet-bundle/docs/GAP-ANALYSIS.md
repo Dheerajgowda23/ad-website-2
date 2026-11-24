@@ -27,6 +27,9 @@ The repository implements **M0–M6**. This document separates three things:
 | **No attendance report** | Guide-level entry existed; nothing aggregated it and nothing exported it | `GET /casework/attendance/report?month=YYYY-MM` (reporting:read) + `export.csv` (export:run), a dashboard tab with month picker, and CSV escaping tested |
 | **zone_events were write-only** | Mismatches, foreign origins and rejected zone claims were recorded but never raised | `alert.service.ts`: 15-minute window, deduplicated, mails every active ADMIN_HR when SMTP is configured; runs at boot and every 5 minutes |
 | Public site had 5 of 6 screens | Contract §8 asks for FAQ and downloads | `/faq` and `/downloads` pages plus navigation; downloads links the live Annexure II PDF rather than a stale copy |
+| **No staff administration** | `user:manage` existed with no route behind it: creating an officer, disabling a leaver or replacing a lost phone all needed SQL and the CLI | `GET/POST /api/staff/users`, `PATCH /api/staff/users/:id`, `POST /api/staff/users/:id/reset-authenticator`; roles are validated, non-ADA addresses refused, the last active ADMIN & HR cannot be locked out, self-deactivation refused, every change audited, and a "Staff & Access" dashboard tab does the same work without SQL |
+| **No bulk casework** | Returning, rejecting or chasing 40 applications one at a time was the only way | `POST /casework/applications/bulk` (RETURN / REJECT / REMIND) with per-row results, existing per-action permissions, correction emails and a sponsor reminder template; selection checkboxes in the inbox |
+| **Attendance could only be typed per trainee** | A guide with 20 trainees entered 20 forms a month | `POST /casework/attendance/import` parses `applicationNo,month,presentDays,totalDays`, validates each row against the same schema, imports up to 500 rows and reports every rejected line without aborting the batch |
 
 Verification for this pass: both web builds, workspace typecheck, the existing suite
 (23 tests), and a cold start of the bundle stack with images loaded from tarballs.
@@ -52,10 +55,9 @@ Ordered by what blocks a real go-live. "Contract" refers to CODE-HANDOFF section
 | # | Gap | Contract | Detail |
 |---|---|---|---|
 | 6 | Remaining downloads are thin | §8 | FAQ and downloads now exist. The downloads page links guidelines, the blank Annexure II and the portal-generated documents; there is still no hosted copy of Annexure I, the undertaking format, the application format or the certificate format. |
-| 7 | No reset action for an authenticator | §2 | Enrolment is self-service at first sign-in and via CLI. There is no "reset this person's authenticator" button for Admin & HR, so a lost phone means a CLI command. |
-| 8 | Attendance import, reporting-day checklist | §8 | Monthly report + CSV export exist. Bulk CSV **upload** of attendance, the printable reporting-day checklist and the bulk actions (reject/return/remind) are still missing. |
+| 7 | Reporting-day checklist is not a printable screen | §8 | Attendance CSV import and the printable checklist remain the two gaps here: the checklist exists as packet data, not as a sheet Security can tick at the desk. |
 | 10 | Committee packet presentation is thin | §8 | Scoring exists; the "packet with revisions, verified-letter stamp, committee scores, decision buttons with reason" is assembled from list/detail data rather than a single printable packet. Earlier-revision diff is not shown in the UI. |
-| 11 | Bulk actions incomplete | §8 | CSV export is implemented (`/casework/export/csv`). Bulk reject, bulk remind-sponsor, bulk return and print packet are not. |
+| 11 | Print packet missing | §8 | Bulk reject / remind / return are implemented; a print-formatted committee packet is not. |
 | 12 | No config screen for reason codes/templates | §8, §12 | Flags, intake year and capacity are editable; reason codes, letter templates, `return_for_correction_days` and `edit_cap_per_day` are not exposed in configuration. The open decisions in §12 are unimplemented by design. |
 
 ### 2.3 Engineering / quality

@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { z } from 'zod';
 import type { AppDeps } from '../../types.js';
 import { ApiError, badRequest } from '../../lib/http.js';
 import { requirePermission } from '../../middleware/auth.js';
@@ -15,6 +16,7 @@ import {
   attendanceEntrySchema,
   certificateIssueSchema,
   maskAadhaar,
+  hasPermission,
 } from '@ada/shared';
 import {
   listApplicationsForStaff,
@@ -44,7 +46,15 @@ import {
   notifyOfferIssued,
   notifyPassIssued,
   notifyCertificateIssued,
+  notifySponsorReminder,
 } from '../../services/notification.service.js';
+
+const bulkActionSchema = z.object({
+  action: z.enum(['RETURN', 'REJECT', 'REMIND']),
+  ids: z.array(z.string().min(1)).min(1).max(100),
+  reason: z.string().trim().min(5).max(1000).optional(),
+  deadlineDays: z.number().int().min(1).max(30).default(7),
+});
 
 export const caseworkRouter = (deps: AppDeps): Router => {
   const router = Router();
@@ -113,6 +123,100 @@ export const caseworkRouter = (deps: AppDeps): Router => {
     }
   });
 
+  // Bulk casework: the same transitions as the single-record routes, one call.
+  // Each row is attempted independently so one bad id cannot hide the rest.
+  router.post('/applications/bulk', requirePermission(deps, 'screening:write'), async (req, res, next) => {
+    try {
+      if (!deps.prisma) throw new ApiError(503, 'DB_UNAVAILABLE', 'Database is not configured for this process');
+      const staff = res.locals.staff;
+      if (!staff) throw new ApiError(401, 'AUTH_REQUIRED', 'Sign in to continue');
+
+      const body = bulkActionSchema.parse(req.body);
+      if (body.action === 'RETURN' && !hasPermission(staff.role, 'application:return')) {
+        throw new ApiError(403, 'FORBIDDEN', 'You may not return applications');
+      }
+      if (body.action === 'REJECT' && !hasPermission(staff.role, 'application:reject')) {
+        throw new ApiError(403, 'FORBIDDEN', 'You may not reject applications');
+      }
+      if (body.action !== 'REMIND' && !body.reason) {
+        throw badRequest('REASON_REQUIRED', 'A reason is required for this bulk action');
+      }
+
+      const apps = await deps.prisma.application.findMany({
+        where: { id: { in: body.ids }, deletedAt: null },
+        include: { student: { select: { email: true, fullName: true } }, sponsor: { select: { officialEmail: true } } },
+      }) as unknown as {
+        id: string;
+        applicationNo: string | null;
+        student: { email: string; fullName: string } | null;
+        sponsor: { officialEmail: string } | null;
+      }[];
+
+      const results: { id: string; ok: boolean; error?: string }[] = [];
+
+      for (const id of body.ids) {
+        const app = apps.find((row) => row.id === id);
+        if (!app) {
+          results.push({ id, ok: false, error: 'Application not found' });
+          continue;
+        }
+        try {
+          if (body.action === 'RETURN') {
+            await returnApplicationForCorrection(
+              { prisma: deps.prisma },
+              id,
+              staff.id,
+              { reason: body.reason!, deadlineDays: body.deadlineDays },
+              req.ip ?? null,
+            );
+            if (app.student?.email) {
+              await notifyCorrectionRequested(
+                { prisma: deps.prisma },
+                id,
+                app.student.email,
+                app.applicationNo || id,
+                body.reason!,
+              );
+            }
+          } else if (body.action === 'REJECT') {
+            await rejectEligibility(
+              { prisma: deps.prisma },
+              id,
+              staff.id,
+              { reason: body.reason! },
+              req.ip ?? null,
+            );
+          } else {
+            if (!app.sponsor?.officialEmail) {
+              results.push({ id, ok: false, error: 'No sponsoring officer on this application' });
+              continue;
+            }
+            await notifySponsorReminder(
+              { prisma: deps.prisma },
+              id,
+              app.sponsor.officialEmail,
+              app.applicationNo || id,
+              app.student?.fullName ?? 'the candidate',
+              body.reason ?? 'the referral is awaiting action',
+            );
+          }
+          results.push({ id, ok: true });
+        } catch (err) {
+          results.push({ id, ok: false, error: err instanceof Error ? err.message : 'Failed' });
+        }
+      }
+
+      res.json({
+        action: body.action,
+        succeeded: results.filter((row) => row.ok).length,
+        failed: results.filter((row) => !row.ok).length,
+        results,
+      });
+    } catch (err) {
+      next(err);
+    }
+  });
+
   // 1. Applications listing (Admin & HR, Committee, Director, Security, Guide)
   router.get('/applications', async (req, res, next) => {
     try {
@@ -132,7 +236,6 @@ export const caseworkRouter = (deps: AppDeps): Router => {
     }
   });
 
-  // 2. Full application packet
   router.get('/applications/:id', async (req, res, next) => {
     try {
       if (!deps.prisma) throw new ApiError(503, 'DB_UNAVAILABLE', 'Database is not configured for this process');
@@ -739,6 +842,69 @@ export const caseworkRouter = (deps: AppDeps): Router => {
   );
 
   // 17. Directorate list
+  // 16b. Attendance CSV import: applicationNo,month,presentDays,totalDays per row.
+  router.post(
+    '/attendance/import',
+    requirePermission(deps, 'attendance:write'),
+    async (req, res, next) => {
+      try {
+        if (!deps.prisma) throw new ApiError(503, 'DB_UNAVAILABLE', 'Database is not configured for this process');
+        const staff = res.locals.staff;
+        if (!staff) throw new ApiError(401, 'AUTH_REQUIRED', 'Sign in to continue');
+
+        const csv = z
+          .object({ csv: z.string().min(1).max(200_000) })
+          .parse(req.body ?? {}).csv;
+
+        const rows = csv
+          .split(/\r?\n/)
+          .map((line) => line.trim())
+          .filter(Boolean)
+          .map((line) => line.split(',').map((cell) => cell.trim().replace(/^"|"$/g, '')));
+
+        // A header row is optional and ignored.
+        if (rows.length > 0 && /application/i.test(rows[0]?.[0] ?? '')) rows.shift();
+        if (rows.length === 0) throw badRequest('EMPTY_IMPORT', 'No attendance rows found');
+        if (rows.length > 500) throw badRequest('IMPORT_TOO_LARGE', 'Import at most 500 rows at a time');
+
+        const imported: string[] = [];
+        const failed: { row: number; applicationNo: string; error: string }[] = [];
+
+        for (let index = 0; index < rows.length; index += 1) {
+          const [applicationNo, month, present, total] = rows[index] ?? [];
+          try {
+            const entry = attendanceEntrySchema.parse({
+              month,
+              presentDays: Number(present),
+              totalDays: Number(total),
+            });
+            if (Number(present) > Number(total)) {
+              throw badRequest('INVALID_ATTENDANCE', 'Present days cannot exceed total days');
+            }
+            const app = await deps.prisma.application.findFirst({
+              where: { applicationNo: applicationNo ?? '', deletedAt: null },
+              select: { id: true },
+            });
+            if (!app) throw badRequest('APPLICATION_NOT_FOUND', 'No application with that number');
+
+            await enterAttendance({ prisma: deps.prisma }, app.id, staff.id, entry, req.ip ?? null);
+            imported.push(applicationNo ?? '');
+          } catch (err) {
+            failed.push({
+              row: index + 1,
+              applicationNo: applicationNo ?? '',
+              error: err instanceof Error ? err.message : 'Invalid row',
+            });
+          }
+        }
+
+        res.json({ imported: imported.length, failed: failed.length, errors: failed });
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
   router.get('/meta/directorates', async (_req, res, next) => {
     try {
       if (!deps.prisma) throw new ApiError(503, 'DB_UNAVAILABLE', 'Database is not configured for this process');
