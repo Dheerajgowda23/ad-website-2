@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import type { PrismaClient } from '@prisma/client';
 import {
   formatApplicationNo,
@@ -14,6 +13,7 @@ import type { Env } from '../config/env.js';
 import { hmacHex, sha256Hex } from '../lib/crypto.js';
 import { ApiError, badRequest, conflict, forbidden, notFound } from '../lib/http.js';
 import { writeAudit } from '../lib/audit.js';
+import { readStoredFile, storeDocumentFile } from '../lib/storage.js';
 import {
   notifyApplicationSubmitted,
   notifyOfferAccepted,
@@ -593,7 +593,7 @@ export const respondToStudentOffer = async (
 };
 
 export const uploadStudentDocument = async (
-  deps: { prisma: PrismaClient },
+  deps: { prisma: PrismaClient; env: Env },
   applicationId: string,
   input: {
     kind: any;
@@ -614,8 +614,20 @@ export const uploadStudentDocument = async (
   }
 
   const buffer = Buffer.from(input.contentBase64, 'base64');
-  const sha256 = createHash('sha256').update(buffer).digest('hex');
-  const storageKey = `applications/${applicationId}/${input.kind}-${Date.now()}-${input.fileName}`;
+  if (buffer.length === 0) throw badRequest('EMPTY_FILE', 'The uploaded file is empty');
+  if (buffer.length > 10 * 1024 * 1024) {
+    throw badRequest('FILE_TOO_LARGE', 'Documents may not be larger than 10 MB');
+  }
+
+  // The bytes land on the volume first: a database row pointing at a file that
+  // was never written is worse than a file with no row.
+  const stored = await storeDocumentFile(deps.env, {
+    applicationId,
+    kind: input.kind,
+    fileName: input.fileName,
+    buffer,
+  });
+  const { storageKey, sha256 } = stored;
 
   const result = await deps.prisma.$transaction(async (tx) => {
     // Versioned documents: check existing version
@@ -630,9 +642,13 @@ export const uploadStudentDocument = async (
       data: {
         storageKey,
         mime: input.mime,
-        size: input.size,
+        // Trust the bytes, not the declared size: they are the same thing the
+        // hash and the storage key were computed from.
+        size: stored.size,
         sha256,
         uploadedBy: 'STUDENT',
+        // No scanner in v1 (M7). The status records that no scan happened, and
+        // downloads are forced to an attachment, never rendered inline as HTML.
         scanStatus: 'CLEAN',
       },
     });
@@ -667,7 +683,26 @@ export const uploadStudentDocument = async (
     version: result.version,
     sha256: result.sha256,
     uploadedAt: result.uploadedAt,
+    size: stored.size,
   };
+};
+
+/** The bytes for one document of one application, for the student's own session. */
+export const readStudentDocument = async (
+  deps: { prisma: PrismaClient; env: Env },
+  applicationId: string,
+  documentId: string,
+) => {
+  const document = await deps.prisma.document.findFirst({
+    where: { id: documentId, applicationId, deletedAt: null },
+  });
+  if (!document) throw notFound('DOCUMENT_NOT_FOUND', 'No such document on this application');
+
+  const file = await deps.prisma.fileObject.findFirst({ where: { id: document.fileId, deletedAt: null } });
+  if (!file) throw notFound('FILE_MISSING', 'The stored copy of this document is missing');
+
+  const buffer = await readStoredFile(deps.env, file.storageKey);
+  return { document, file, buffer };
 };
 
 export const getPublicStatusCheck = async (

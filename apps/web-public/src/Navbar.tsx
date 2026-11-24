@@ -5,6 +5,8 @@ export const Navbar = () => {
 
   const navLinks = [
     { to: '/guidelines', label: 'Guidelines & Policy' },
+    { to: '/downloads', label: 'Downloads' },
+    { to: '/faq', label: 'FAQ' },
     { to: '/status-check', label: 'Status Check' },
     { to: '/verify', label: 'Verify Certificate' },
     { to: '/application', label: 'My Application' },

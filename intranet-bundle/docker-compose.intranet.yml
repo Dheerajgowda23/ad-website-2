@@ -1,0 +1,139 @@
+# ADA Internship & Project Work Portal - offline intranet stack.
+#
+# Runs from images already present on the machine (see images/ and install.sh).
+# Nothing here is pulled from the internet and nothing is built on the intranet PC.
+#
+#   db            PostgreSQL 16, schema owner + the two runtime roles (db/grants.sql)
+#   migrate       one-shot: prisma migrate deploy as the owner
+#   api-public    :4000  ZONE=public   + the student/public SPA
+#   api-internal  :4001  ZONE=internal + the staff SPA
+#   tools         one-shot helper for seeding / TOTP enrolment / referral issuing
+#
+# Both API services are the SAME image with a different ZONE and DB role.
+
+name: ada-portal
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: ada-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-ada_portal}
+      POSTGRES_USER: ${POSTGRES_USER:-portal_owner}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      PORTAL_PUBLIC_DB_PASSWORD: ${PORTAL_PUBLIC_DB_PASSWORD:?set PORTAL_PUBLIC_DB_PASSWORD in .env}
+      PORTAL_INTERNAL_DB_PASSWORD: ${PORTAL_INTERNAL_DB_PASSWORD:?set PORTAL_INTERNAL_DB_PASSWORD in .env}
+    ports:
+      # Loopback only: the database is not a service for the LAN.
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-5433}:5432"
+    volumes:
+      - ada_pgdata:/var/lib/postgresql/data
+      - ./db/grants.sql:/opt/ada/grants.sql:ro
+      - ./db/init-roles.sh:/docker-entrypoint-initdb.d/05-roles.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-portal_owner} -d ${POSTGRES_DB:-ada_portal}"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  migrate:
+    image: ada-portal-api:${ADA_IMAGE_TAG:-1.0.0}
+    container_name: ada-migrate
+    restart: "no"
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-portal_owner}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-ada_portal}?schema=public
+    depends_on:
+      db:
+        condition: service_healthy
+    command: sh -c "npm run db:migrate -w @ada/api"
+
+  api-public:
+    image: ada-portal-api:${ADA_IMAGE_TAG:-1.0.0}
+    container_name: ada-api-public
+    restart: unless-stopped
+    environment: &api-env
+      ZONE: public
+      PORT: 4000
+      PORTAL_ENV: ${PORTAL_ENV:-development}
+      ALLOW_DEV_OTP: ${ALLOW_DEV_OTP:-true}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      PUBLIC_APP_ORIGIN: ${PUBLIC_APP_ORIGIN:-http://localhost:4000}
+      INTERNAL_APP_ORIGIN: ${INTERNAL_APP_ORIGIN:-http://localhost:4001}
+      FILE_STORAGE_DIR: /app/data/files
+      SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET in .env}
+      OTP_PEPPER: ${OTP_PEPPER:?set OTP_PEPPER in .env}
+      REFERRAL_HMAC_PEPPER: ${REFERRAL_HMAC_PEPPER:?set REFERRAL_HMAC_PEPPER in .env}
+      TOTP_PEPPER: ${TOTP_PEPPER:?set TOTP_PEPPER in .env}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-25}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-ADA Internship Portal <no-reply@ada.gov.in>}
+      DATABASE_URL: postgresql://portal_public:${PORTAL_PUBLIC_DB_PASSWORD}@db:5432/${POSTGRES_DB:-ada_portal}?schema=public
+    volumes:
+      - ada_files:/app/data/files
+    ports:
+      - "${PUBLIC_HOST_PORT:-4000}:4000"
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:4000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 10s
+      timeout: 5s
+      retries: 24
+
+  api-internal:
+    image: ada-portal-api:${ADA_IMAGE_TAG:-1.0.0}
+    container_name: ada-api-internal
+    restart: unless-stopped
+    environment:
+      <<: *api-env
+      ZONE: internal
+      PORT: 4001
+      DATABASE_URL: postgresql://portal_internal:${PORTAL_INTERNAL_DB_PASSWORD}@db:5432/${POSTGRES_DB:-ada_portal}?schema=public
+    volumes:
+      - ada_files:/app/data/files
+    ports:
+      - "${INTERNAL_HOST_PORT:-4001}:4001"
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:4001/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 10s
+      timeout: 5s
+      retries: 24
+
+  tools:
+    image: ada-portal-api:${ADA_IMAGE_TAG:-1.0.0}
+    container_name: ada-tools
+    profiles: ["tools"]
+    restart: "no"
+    environment:
+      ZONE: internal
+      PORTAL_ENV: ${PORTAL_ENV:-development}
+      ALLOW_DEV_OTP: ${ALLOW_DEV_OTP:-true}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      PUBLIC_APP_ORIGIN: ${PUBLIC_APP_ORIGIN:-http://localhost:4000}
+      INTERNAL_APP_ORIGIN: ${INTERNAL_APP_ORIGIN:-http://localhost:4001}
+      SESSION_SECRET: ${SESSION_SECRET}
+      OTP_PEPPER: ${OTP_PEPPER}
+      REFERRAL_HMAC_PEPPER: ${REFERRAL_HMAC_PEPPER}
+      TOTP_PEPPER: ${TOTP_PEPPER}
+      MIGRATION_DATABASE_URL: postgresql://${POSTGRES_USER:-portal_owner}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-ada_portal}?schema=public
+      DATABASE_URL: postgresql://${POSTGRES_USER:-portal_owner}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-ada_portal}?schema=public
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  ada_files:
+  ada_pgdata:

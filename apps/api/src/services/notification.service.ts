@@ -1,5 +1,7 @@
 import type { PrismaClient } from '@prisma/client';
 import { pino } from 'pino';
+import type { Env } from '../config/env.js';
+import { sendMail } from '../lib/mailer.js';
 
 const logger = pino({ name: 'notifications' });
 
@@ -36,11 +38,12 @@ export async function queueNotification(
 }
 
 /**
- * Processes queued notifications.
- * In development and test environments, this dispatches via mock provider immediately.
+ * Sends queued notifications through the configured SMTP relay. A row stays in
+ * FAILED (with the provider error) rather than pretending it was delivered, so
+ * Admin & HR can see undelivered mail in the table.
  */
 export async function processQueuedNotifications(
-  deps: { prisma: PrismaClient },
+  deps: { prisma: PrismaClient; env?: Env },
 ) {
   const pending = await deps.prisma.notification.findMany({
     where: { status: 'QUEUED' },
@@ -51,18 +54,25 @@ export async function processQueuedNotifications(
   const now = new Date();
 
   for (const item of pending) {
-    logger.info(
-      { notificationId: item.id, to: item.to, template: item.template },
-      'Dispatching notification (dev/test mock provider)',
-    );
+    if (item.channel !== 'EMAIL' || !deps.env) {
+      logger.info(
+        { notificationId: item.id, to: item.to, template: item.template },
+        'Notification has no deliverable channel; left queued',
+      );
+      continue;
+    }
+
+    const result = await sendMail(deps.env, {
+      to: item.to,
+      subject: `ADA Internship Portal - ${item.template.split(':')[0]?.replaceAll('_', ' ').toLowerCase()}`,
+      text: item.template,
+    });
 
     const updated = await deps.prisma.notification.update({
       where: { id: item.id },
-      data: {
-        status: 'SENT',
-        sentAt: now,
-        providerId: `mock-email-${item.id}`,
-      },
+      data: result.delivered
+        ? { status: 'SENT', sentAt: now, providerId: result.providerId ?? null }
+        : { status: 'FAILED', providerId: result.error ?? null },
     });
     processed.push(updated);
   }

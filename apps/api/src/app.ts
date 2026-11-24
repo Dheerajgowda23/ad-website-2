@@ -1,5 +1,7 @@
 import express, { type Express } from 'express';
 import cookieParser from 'cookie-parser';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 import type { AppDeps } from './types.js';
 import { sessionMiddleware } from './lib/session.js';
 import { sameOriginGuard, zoneClaimGuard } from './middleware/auth.js';
@@ -23,6 +25,10 @@ export const createApp = (deps: AppDeps): Express => {
     res.setHeader('X-ADA-Zone', deps.zone);
     next();
   });
+  // Documents arrive as base64 JSON, so that one route needs a larger body limit
+  // than the rest of the API. It is parsed here first; the general parser below
+  // then sees the body as already read.
+  app.use('/api/public/application/documents', express.json({ limit: '16mb' }));
   app.use(express.json({ limit: '1mb' }));
   app.use(cookieParser());
   app.use(sessionMiddleware(deps.zone, deps.sessionStore, deps.env));
@@ -37,6 +43,32 @@ export const createApp = (deps: AppDeps): Express => {
     app.use('/api/staff', staffRouter(deps));
   } else {
     app.use('/api/public', publicRouter(deps));
+  }
+
+  // One origin per zone: the same process serves its own built SPA. That is what
+  // lets an air-gapped install run with two containers and no web server, and it
+  // keeps cookies same-origin. Absent in the hermetic tests (no dist on disk).
+  const indexHtml = deps.webDist ? join(deps.webDist, 'index.html') : null;
+  if (deps.webDist && indexHtml && existsSync(indexHtml)) {
+    app.use(
+      express.static(deps.webDist, {
+        index: false,
+        maxAge: '1y',
+        immutable: true,
+        setHeaders: (res, path) => {
+          if (path.endsWith('index.html')) res.setHeader('Cache-Control', 'no-store');
+        },
+      }),
+    );
+    // Client-side routes (/login, /application, /verify) fall back to the SPA.
+    app.use((req, res, next) => {
+      if (req.method !== 'GET' || req.path.startsWith('/api/')) {
+        next();
+        return;
+      }
+      res.setHeader('Cache-Control', 'no-store');
+      res.sendFile(indexHtml);
+    });
   }
 
   app.use(notFoundHandler);

@@ -1,13 +1,20 @@
 import type { PrismaClient } from '@prisma/client';
 import { isAdaEmail, permissionsForRole, type Role } from '@ada/shared';
 import type { Env } from '../config/env.js';
-import { signToken, verifyToken } from '../lib/crypto.js';
+import QRCode from 'qrcode';
+import { generateTotpSecret, signToken, verifyToken } from '../lib/crypto.js';
 import { ApiError, badRequest, unauthorized } from '../lib/http.js';
 import { writeAudit } from '../lib/audit.js';
 import { totpAt, verifyTotp } from '../lib/totp.js';
 import { issueChallenge, verifyChallenge, OTP_TTL_SECONDS } from './otp.service.js';
 
 export const PENDING_TTL_SECONDS = 5 * 60;
+const TOTP_ISSUER = 'ADA Internship Portal';
+
+const otpauthUri = (email: string, secret: string): string => {
+  const label = encodeURIComponent(`${TOTP_ISSUER}:${email}`);
+  return `otpauth://totp/${label}?secret=${secret}&issuer=${encodeURIComponent(TOTP_ISSUER)}&algorithm=SHA1&digits=6&period=30`;
+};
 
 export interface StaffUserRow {
   id: string;
@@ -62,7 +69,18 @@ export const requestStaffOtp = async (
 export const verifyStaffOtp = async (
   deps: { prisma: PrismaClient; env: Env },
   input: { challengeId: string; code: string; ip: string | null },
-): Promise<{ stage: 'TOTP_REQUIRED'; pendingId: string; expiresInSeconds: number; devTotpCode?: string }> => {
+): Promise<
+  | { stage: 'TOTP_REQUIRED'; pendingId: string; expiresInSeconds: number; devTotpCode?: string }
+  | {
+      stage: 'TOTP_ENROLMENT_REQUIRED';
+      pendingId: string;
+      expiresInSeconds: number;
+      secret: string;
+      otpauthUri: string;
+      qrDataUrl: string;
+      devTotpCode?: string;
+    }
+> => {
   const { payload } = await verifyChallenge(deps.prisma, {
     challengeId: input.challengeId,
     code: input.code,
@@ -85,12 +103,29 @@ export const verifyStaffOtp = async (
     throw unauthorized('AUTH_FAILED', 'Sign-in could not be completed');
   }
 
+  // First sign-in for an account without an authenticator: the mailbox is already
+  // proven, so enrol there and then instead of dead-ending the user. The secret
+  // travels inside the signed pending token, never in a database column, until it
+  // is confirmed by a valid code.
   if (!user.totpSecret) {
-    throw new ApiError(
-      403,
-      'TOTP_NOT_ENROLLED',
-      'This account has no authenticator enrolled. Ask Admin & HR to reset it.',
+    const secret = generateTotpSecret();
+    const pendingId = signToken(
+      { sub: user.id, stage: 'enrol', secret },
+      deps.env.TOTP_PEPPER,
+      PENDING_TTL_SECONDS,
     );
+    const uri = otpauthUri(user.email, secret);
+    const qrDataUrl = await QRCode.toDataURL(uri, { margin: 1, width: 240 });
+
+    return {
+      stage: 'TOTP_ENROLMENT_REQUIRED',
+      pendingId,
+      expiresInSeconds: PENDING_TTL_SECONDS,
+      secret,
+      otpauthUri: uri,
+      qrDataUrl,
+      ...(deps.env.ALLOW_DEV_OTP ? { devTotpCode: totpAt(secret) } : {}),
+    };
   }
 
   const pendingId = signToken({ sub: user.id, stage: 'totp' }, deps.env.TOTP_PEPPER, PENDING_TTL_SECONDS);
@@ -162,6 +197,76 @@ export const verifyStaffTotp = async (
   });
 
   return { user: user as StaffUserRow, permissions: permissionsForRole(user.role) };
+};
+
+/**
+ * Confirms the first authenticator: the code proves the phone holds the secret,
+ * and only then does the secret reach the user row.
+ */
+export const completeTotpEnrolment = async (
+  deps: { prisma: PrismaClient; env: Env },
+  input: { pendingId: string; code: string; ip: string | null },
+): Promise<{ user: StaffUserRow; permissions: readonly string[] }> => {
+  const pending = verifyToken<{ sub: string; stage: string; secret: string }>(
+    input.pendingId,
+    deps.env.TOTP_PEPPER,
+  );
+  if (!pending || pending.stage !== 'enrol' || typeof pending.sub !== 'string' || !pending.secret) {
+    throw unauthorized('PENDING_EXPIRED', 'That enrolment attempt expired. Start again.');
+  }
+
+  const user = await deps.prisma.user.findFirst({
+    where: { id: pending.sub, isActive: true, deletedAt: null },
+    select: {
+      id: true,
+      role: true,
+      name: true,
+      email: true,
+      employeeCode: true,
+      directorateId: true,
+      isActive: true,
+      totpSecret: true,
+    },
+  });
+  if (!user) throw unauthorized('AUTH_FAILED', 'Sign-in could not be completed');
+  if (user.totpSecret) {
+    throw new ApiError(409, 'TOTP_ALREADY_ENROLLED', 'This account already has an authenticator. Sign in with it.');
+  }
+
+  if (!verifyTotp(pending.secret, input.code)) {
+    await writeAudit(deps.prisma, {
+      actorId: user.id,
+      actorRole: user.role,
+      action: 'AUTH_TOTP_ENROLMENT_FAILED',
+      entity: 'user',
+      entityId: user.id,
+      reason: 'invalid code during enrolment',
+      ip: input.ip,
+      zone: 'internal',
+    });
+    throw unauthorized('TOTP_INVALID', 'That authenticator code is not valid');
+  }
+
+  const enrolled = await deps.prisma.user.update({
+    where: { id: user.id },
+    data: { totpSecret: pending.secret, totpEnrolledAt: new Date(), lastLoginAt: new Date() },
+  });
+
+  await writeAudit(deps.prisma, {
+    actorId: user.id,
+    actorRole: user.role,
+    action: 'AUTH_TOTP_ENROLLED',
+    entity: 'user',
+    entityId: user.id,
+    after: { enrolledAt: enrolled.totpEnrolledAt?.toISOString() ?? null },
+    ip: input.ip,
+    zone: 'internal',
+  });
+
+  return {
+    user: { ...user, totpSecret: enrolled.totpSecret } as StaffUserRow,
+    permissions: permissionsForRole(user.role),
+  };
 };
 
 export const staffLogoutAudit = async (

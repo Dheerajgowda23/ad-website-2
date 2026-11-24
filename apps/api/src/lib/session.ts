@@ -63,7 +63,7 @@ export const sessionMiddleware = (zone: Zone, store: session.Store, env: Env): R
       // Two hosts, one registrable domain in production; lax keeps the
       // cross-host form posts working without opening up CSRF.
       sameSite: 'lax',
-      secure: env.PORTAL_ENV === 'production',
+      secure: env.SECURE_COOKIES,
       path: '/',
       maxAge: TTL_MS[zone],
     },

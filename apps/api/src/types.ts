@@ -46,6 +46,8 @@ export interface AppDeps {
   /** Default reads users through Prisma; tests may supply a stub. */
   loadStaffUser?: (id: string) => Promise<StaffPrincipal | null>;
   flagStore?: FlagStore;
+  /** Built SPA directory served by this zone; absent in tests. */
+  webDist?: string;
   now?: () => Date;
 }
 

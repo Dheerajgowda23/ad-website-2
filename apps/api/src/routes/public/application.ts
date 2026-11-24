@@ -17,7 +17,9 @@ import {
   withdrawStudentApplication,
   respondToStudentOffer,
   uploadStudentDocument,
+  readStudentDocument,
 } from '../../services/application.service.js';
+import { downloadName } from '../../lib/storage.js';
 import {
   generateRecommendationLetterTemplatePdf,
   generateApplicationSummaryPdf,
@@ -131,12 +133,37 @@ export const publicApplicationRouter = (deps: AppDeps): Router => {
       const applicationId = String(res.locals.applicationId ?? '');
       const parsed = documentUploadSchema.parse(req.body);
       const result = await uploadStudentDocument(
-        { prisma: deps.prisma },
+        { prisma: deps.prisma, env: deps.env },
         applicationId,
         parsed,
         req.ip ?? null,
       );
-      res.json({ document: result });
+      res.status(201).json({ document: result });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // Download a document the student uploaded (own application only: the id comes
+  // from the session, never from the request).
+  router.get('/documents/:documentId/download', async (req, res, next) => {
+    try {
+      if (!deps.prisma) throw new ApiError(503, 'DB_UNAVAILABLE', 'Database is not configured for this process');
+      const applicationId = String(res.locals.applicationId ?? '');
+      const { document, file, buffer } = await readStudentDocument(
+        { prisma: deps.prisma, env: deps.env },
+        applicationId,
+        String(req.params.documentId),
+      );
+
+      res.setHeader('Content-Type', file.mime || 'application/octet-stream');
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="${downloadName(document.kind, file.storageKey.split('/').pop() ?? 'document')}"`,
+      );
+      res.setHeader('Cache-Control', 'no-store');
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.send(buffer);
     } catch (err) {
       next(err);
     }

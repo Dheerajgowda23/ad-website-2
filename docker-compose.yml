@@ -19,11 +19,15 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-ada_portal}
       POSTGRES_USER: ${POSTGRES_USER:-portal_owner}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-portal_owner_dev_pw}
+      # Role passwords are passed in, never baked into grants.sql.
+      PORTAL_PUBLIC_DB_PASSWORD: ${PORTAL_PUBLIC_DB_PASSWORD:-portal_public_dev_pw}
+      PORTAL_INTERNAL_DB_PASSWORD: ${PORTAL_INTERNAL_DB_PASSWORD:-portal_internal_dev_pw}
     ports:
       - "5433:5432"
     volumes:
       - ada_pgdata:/var/lib/postgresql/data
-      - ./db/grants.sql:/docker-entrypoint-initdb.d/10-grants.sql:ro
+      - ./db/grants.sql:/opt/ada/grants.sql:ro
+      - ./db/init-roles.sh:/docker-entrypoint-initdb.d/05-roles.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-portal_owner} -d ${POSTGRES_DB:-ada_portal}"]
       interval: 5s
@@ -61,6 +65,9 @@ services:
       TOTP_PEPPER: ${TOTP_PEPPER}
       PUBLIC_APP_ORIGIN: ${PUBLIC_APP_ORIGIN:-http://localhost:5173}
       INTERNAL_APP_ORIGIN: ${INTERNAL_APP_ORIGIN:-http://localhost:5174}
+      FILE_STORAGE_DIR: /app/data/files
+    volumes:
+      - ada_files:/app/data/files
     ports:
       - "4000:4000"
     depends_on:
@@ -89,6 +96,9 @@ services:
       TOTP_PEPPER: ${TOTP_PEPPER}
       PUBLIC_APP_ORIGIN: ${PUBLIC_APP_ORIGIN:-http://localhost:5173}
       INTERNAL_APP_ORIGIN: ${INTERNAL_APP_ORIGIN:-http://localhost:5174}
+      FILE_STORAGE_DIR: /app/data/files
+    volumes:
+      - ada_files:/app/data/files
     ports:
       - "4001:4001"
     depends_on:
@@ -103,4 +113,5 @@ services:
       retries: 12
 
 volumes:
+  ada_files:
   ada_pgdata:

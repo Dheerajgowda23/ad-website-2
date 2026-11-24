@@ -159,6 +159,12 @@ export const DashboardPage = () => {
     enabled: permissions.includes('audit:read') && activeTab === 'audit',
   });
 
+  const attendanceQuery = useQuery<any>({
+    queryKey: ['attendanceReport', attendanceMonth],
+    queryFn: () => api(`/api/staff/casework/attendance/report?month=${attendanceMonth}`),
+    enabled: permissions.includes('reporting:read') && activeTab === 'attendance',
+  });
+
   // Action Mutations
   const verifyLetterMut = useMutation({
     mutationFn: (id: string) => api(`/api/staff/casework/applications/${id}/verify-letter`, { method: 'POST' }),
@@ -433,6 +439,14 @@ export const DashboardPage = () => {
                 Trainees & Attendance
               </button>
             )}
+            {permissions.includes('reporting:read') && (
+              <button
+                onClick={() => setActiveTab('attendance')}
+                className={`px-3 py-1.5 rounded font-semibold transition ${activeTab === 'attendance' ? 'bg-teal-600 text-white' : 'text-slate-300 hover:text-white'}`}
+              >
+                Attendance Report
+              </button>
+            )}
             {permissions.includes('audit:read') && (
               <button
                 onClick={() => setActiveTab('audit')}
@@ -696,12 +710,18 @@ export const DashboardPage = () => {
                             <span className="font-semibold text-slate-800">{doc.kind} (v{doc.version})</span>
                             <span className="text-slate-400 ml-2 font-mono text-[11px]">{doc.sha256.slice(0, 16)}...</span>
                           </div>
-                          <div>
+                          <div className="flex items-center gap-3">
                             {doc.verifiedAt ? (
                               <span className="text-emerald-700 font-bold">✓ Verified by {doc.verifiedBy}</span>
                             ) : (
                               <span className="text-amber-700">Verification Pending</span>
                             )}
+                            <a
+                              className="underline font-semibold text-teal-700"
+                              href={`/api/staff/casework/applications/${packetQuery.data.application.id}/documents/${doc.id}/download`}
+                            >
+                              Download
+                            </a>
                           </div>
                         </div>
                       ))}
@@ -1240,6 +1260,103 @@ export const DashboardPage = () => {
                 </tbody>
               </table>
             </div>
+          </div>
+        )}
+
+        {/* ==================================================================== */}
+        {/* TAB 8a: MONTHLY ATTENDANCE REPORT */}
+        {/* ==================================================================== */}
+        {activeTab === 'attendance' && (
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-end justify-between gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+              <div>
+                <h2 className="text-base font-bold text-navy-950">Monthly attendance register</h2>
+                <p className="mt-1 text-xs text-slate-500">
+                  Entered by guides. 100% attendance is required for the completion certificate.
+                </p>
+              </div>
+              <div className="flex items-end gap-2">
+                <div>
+                  <label className="label" htmlFor="attendance-month">Month</label>
+                  <input
+                    id="attendance-month"
+                    type="month"
+                    className="field"
+                    value={attendanceMonth}
+                    onChange={(event) => setAttendanceMonth(event.target.value)}
+                  />
+                </div>
+                <a
+                  className="btn inline-flex items-center"
+                  href={`/api/staff/casework/attendance/export.csv?month=${attendanceMonth}`}
+                >
+                  Export CSV
+                </a>
+              </div>
+            </div>
+
+            {attendanceQuery.isLoading && <p className="text-xs text-slate-500">Loading register…</p>}
+            {attendanceQuery.isError && (
+              <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                {(attendanceQuery.error as Error).message}
+              </p>
+            )}
+
+            {attendanceQuery.data && (
+              <>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  {[
+                    ['Trainees', attendanceQuery.data.summary.trainees],
+                    ['Present days', attendanceQuery.data.summary.presentDays],
+                    ['Total days', attendanceQuery.data.summary.totalDays],
+                    ['Below 100%', attendanceQuery.data.summary.belowFullAttendance],
+                  ].map(([label, value]) => (
+                    <div key={String(label)} className="rounded-lg border border-slate-200 bg-white p-4">
+                      <p className="text-[10px] uppercase tracking-widest text-slate-400">{label}</p>
+                      <p className="mt-1 text-xl font-bold text-navy-950">{String(value)}</p>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+                  <table className="w-full text-left text-xs">
+                    <thead className="border-b border-slate-200 bg-slate-100 font-semibold uppercase text-slate-700">
+                      <tr>
+                        <th className="p-3">Application</th>
+                        <th className="p-3">Trainee</th>
+                        <th className="p-3">Level</th>
+                        <th className="p-3">Lab</th>
+                        <th className="p-3">Present</th>
+                        <th className="p-3">Total</th>
+                        <th className="p-3">%</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {attendanceQuery.data.entries.map((entry: any) => (
+                        <tr key={entry.applicationId}>
+                          <td className="p-3 font-mono">{entry.applicationNo ?? '—'}</td>
+                          <td className="p-3 font-medium">{entry.studentName}</td>
+                          <td className="p-3">{entry.level}</td>
+                          <td className="p-3">{entry.labCode}</td>
+                          <td className="p-3">{entry.presentDays}</td>
+                          <td className="p-3">{entry.totalDays}</td>
+                          <td className={`p-3 font-bold ${entry.percent < 100 ? 'text-amber-700' : 'text-emerald-700'}`}>
+                            {entry.percent}%
+                          </td>
+                        </tr>
+                      ))}
+                      {attendanceQuery.data.entries.length === 0 && (
+                        <tr>
+                          <td className="p-4 text-slate-500" colSpan={7}>
+                            No attendance entered for {attendanceMonth} yet.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
           </div>
         )}
 

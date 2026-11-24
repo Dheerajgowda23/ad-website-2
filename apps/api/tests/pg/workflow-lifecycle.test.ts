@@ -374,7 +374,7 @@ describe('Full End-to-End Workflow & Milestone Verification', () => {
         size: 1024,
         contentBase64: Buffer.from('PDF_COLLEGE_LETTER_DUMMY_CONTENT').toString('base64'),
       })
-      .expect(200);
+      .expect(201);
 
     expect(uploadRes.body.document.kind).toBe('COLLEGE_LETTER');
     expect(uploadRes.body.document.version).toBe(1);
@@ -442,7 +442,7 @@ describe('Full End-to-End Workflow & Milestone Verification', () => {
         size: 1024,
         contentBase64: Buffer.from('PDF_DUPLICATE_AADHAAR').toString('base64'),
       })
-      .expect(200);
+      .expect(201);
 
     const res = await secondAgent
       .post('/api/public/application/submit')

@@ -28,12 +28,19 @@ docker compose up -d      # db + migrate (one-shot) + both API zones
 ```
 
 That gives `:4000` (public) and `:4001` (internal) from the **same image**, so the only difference
-between the two services is `ZONE` and the Postgres role they connect as. Seed once with the owner
-credentials, then run the two web builds on the host:
+between the two services is `ZONE` and the Postgres role they connect as. Each zone also serves its
+own built React app from that same origin, so the containers alone are a complete portal. Seed once
+with the owner credentials:
 
 ```bash
 npm install
 npm run db:seed           # prints one account per role and the referral codes
+```
+
+Then open `http://localhost:4000` (public/students) and `http://localhost:4001` (staff). The Vite
+dev servers are only for frontend work with hot reload, and proxy `/api` into the containers:
+
+```bash
 npm run dev:public        # :5173  internet zone
 npm run dev:internal      # :5174  intranet zone
 ```
@@ -54,6 +61,33 @@ Notes on the compose stack:
 - `migrate` runs `prisma migrate deploy` as `portal_owner` and exits; both APIs wait for it. Schema
   changes never run as a zone role.
 - The image installs `openssl`, without which Prisma cannot pick its query engine on a slim base.
+
+## Offline intranet install
+
+The portal is deployed to an air-gapped PC from a single folder that contains the two Docker images,
+the compose file, database init scripts, helper scripts (Windows PowerShell and Linux) and an
+installation guide in PDF/DOCX:
+
+```bash
+./scripts/build-intranet-bundle.sh 1.0.0   # builds linux/amd64 images into intranet-bundle/
+```
+
+On the intranet PC: `scripts/install.ps1` (Windows) or `scripts/install.sh` (Linux). Nothing is
+downloaded or built there, and the PC needs no Node.js, npm or PostgreSQL — they are inside the image.
+The only runtime a bare PC needs is Docker, whose Windows/Ubuntu installers travel in
+`intranet-bundle/prerequisites/` (`scripts/fetch-prerequisites.sh` fills them in on a connected
+machine). Full instructions: `intranet-bundle/docs/ADA-Portal-Intranet-Installation-Guide.pdf`.
+The remaining functional gaps are listed in `intranet-bundle/docs/GAP-ANALYSIS.md`.
+
+## Email
+
+OTP and notification email go through an SMTP relay (`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`,
+`SMTP_PASSWORD`, `SMTP_FROM`). With no relay configured, development shows the code on screen
+(`ALLOW_DEV_OTP=true`) and production returns `503 EMAIL_UNAVAILABLE` rather than pretending to send.
+Queued notifications are dispatched every 60 seconds when a relay is configured.
+
+`COOKIE_SECURE` defaults to `true` when `PORTAL_ENV=production`; an intranet install served over plain
+HTTP must set it to `false`, or the browser refuses the session cookie.
 
 ## Tests
 
@@ -163,10 +197,21 @@ bound to the first verified email in a single transaction and an application is 
 - Application numbers are `ADA/INT/R|O|P/<year>/<0001>` from the `application_no_seq` sequence,
   allocated inside the submission transaction (M3+).
 
+## Documents
+
+Uploads are real files on a mounted volume (`FILE_STORAGE_DIR`, default `./data/files`; the compose
+stacks use the `ada_files` volume). Each file is written under a content-hashed key, recorded with
+its sha256, and versioned; documents are soft-deleted, never overwritten. Students can download only
+their own application's documents; staff downloads need `screening:read` and write an audit row.
+There is a 10 MB cap.
+
+Virus scanning (ClamAV) and signed short-lived links are **not** wired yet: this is the remaining
+M7 hardening item, and uploads from outside ADA should not be enabled before it is. See
+`intranet-bundle/docs/GAP-ANALYSIS.md`.
+
 ## Not in this milestone
 
-Uploads are stored as document metadata rows only — MinIO/ClamAV object storage and virus
-scanning are not wired yet, so the scan itself must be added before go-live. Also out of scope:
-background jobs, LDAP, row-level security policies, Playwright end-to-end flows, fingerprint
-attendance devices, and the post-project backlog from the handoff (SMS, bilingual UI, analytics,
-plagiarism checks).
+Still open: ClamAV quarantine/scanning, WAF rules, row-level security policies, background jobs
+(`pg-boss`), LDAP/AD sign-in, Playwright end-to-end flows, bulk casework actions and attendance CSV
+import, fingerprint attendance devices, and the handoff §13 backlog (SMS, payments, eSign,
+bilingual UI, analytics, plagiarism checks).

@@ -37,9 +37,24 @@ const baseSchema = z.object({
   PUBLIC_APP_ORIGIN: z.string().url().default('http://localhost:5173'),
   INTERNAL_APP_ORIGIN: z.string().url().default('http://localhost:5174'),
   LOG_LEVEL: z.string().default('info'),
+  // Production sets Secure cookies by default. An intranet deployment served over
+  // plain HTTP (no TLS yet) must set COOKIE_SECURE=false, or sign-in silently fails.
+  COOKIE_SECURE: booleanish.optional(),
+  // Where the built SPA for this zone lives. Both zones can serve their own UI,
+  // which is what makes an offline, single-origin intranet install possible.
+  WEB_DIST: z.string().optional(),
+  // Document storage. A mounted volume in the container; no object store to run.
+  FILE_STORAGE_DIR: z.string().default('./data/files'),
+  // SMTP relay. Without it, OTP delivery only works with ALLOW_DEV_OTP=true.
+  SMTP_HOST: z.string().optional(),
+  SMTP_PORT: z.coerce.number().int().positive().default(587),
+  SMTP_SECURE: booleanish.default('false'),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASSWORD: z.string().optional(),
+  SMTP_FROM: z.string().default('ADA Internship Portal <no-reply@ada.gov.in>'),
 });
 
-export type Env = z.infer<typeof baseSchema> & { zone: Zone };
+export type Env = z.infer<typeof baseSchema> & { zone: Zone; SECURE_COOKIES: boolean };
 
 export const loadEnv = (source: NodeJS.ProcessEnv = process.env): Env => {
   const zone = zoneFromEnv(source.ZONE);
@@ -69,6 +84,7 @@ export const loadEnv = (source: NodeJS.ProcessEnv = process.env): Env => {
     zone: env.ZONE,
     // Returning live OTP/TOTP codes in an HTTP response is a development aid only.
     ALLOW_DEV_OTP: env.ALLOW_DEV_OTP && env.PORTAL_ENV !== 'production',
+    SECURE_COOKIES: env.COOKIE_SECURE ?? env.PORTAL_ENV === 'production',
   };
 };
 

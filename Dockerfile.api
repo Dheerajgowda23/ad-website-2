@@ -1,5 +1,10 @@
-# One image, two zones. ZONE decides which routers are mounted at boot.
-FROM node:22-slim
+# One image, two zones, and both user interfaces inside it.
+#
+# Build stage compiles the shared package and the two React builds; the runtime
+# stage keeps the API, its Prisma client and the two dist/ folders. Each zone then
+# serves its own SPA from the same origin as its API, which is what makes an
+# air-gapped install possible with only two images (this one + postgres).
+FROM node:22-slim AS build
 
 ENV NODE_ENV=development
 WORKDIR /app
@@ -20,11 +25,34 @@ RUN npm ci --include=dev --no-audit --no-fund
 COPY tsconfig.base.json ./
 COPY packages/shared packages/shared
 COPY apps/api apps/api
-COPY db db
-
-# Prisma Client is generated against the copied schema; the engines it needs are
-# downloaded during npm ci above.
 RUN npm run db:generate -w @ada/api
 
+COPY apps/web-public apps/web-public
+COPY apps/web-internal apps/web-internal
+RUN npm run build -w @ada/web-public \
+  && npm run build -w @ada/web-internal
+
+FROM node:22-slim AS runtime
+
+ENV NODE_ENV=production
+WORKDIR /app
+
+RUN apt-get update -y \
+  && apt-get install -y --no-install-recommends openssl ca-certificates tini \
+  && rm -rf /var/lib/apt/lists/*
+
+COPY --from=build /app/package.json /app/package-lock.json /app/tsconfig.base.json ./
+COPY --from=build /app/node_modules node_modules
+COPY --from=build /app/packages/shared packages/shared
+COPY --from=build /app/apps/api apps/api
+COPY --from=build /app/apps/web-public/dist apps/web-public/dist
+COPY --from=build /app/apps/web-internal/dist apps/web-internal/dist
+COPY db db
+
+# Uploaded documents live on a mounted volume, never inside the image layer.
+RUN mkdir -p /app/data/files
+
 EXPOSE 4000 4001
+
+ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["node", "--import", "tsx", "apps/api/src/index.ts"]

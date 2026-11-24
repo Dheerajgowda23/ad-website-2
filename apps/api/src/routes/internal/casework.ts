@@ -2,6 +2,8 @@ import { Router } from 'express';
 import type { AppDeps } from '../../types.js';
 import { ApiError, badRequest } from '../../lib/http.js';
 import { requirePermission } from '../../middleware/auth.js';
+import { attendanceReport } from '../../services/casework.service.js';
+import { downloadName, readStoredFile } from '../../lib/storage.js';
 import { requireFeatureFlag } from '../../middleware/feature-flag.js';
 import {
   returnForCorrectionSchema,
@@ -140,6 +142,60 @@ export const caseworkRouter = (deps: AppDeps): Router => {
       next(err);
     }
   });
+
+  // 2b. Download a document attached to a packet. Staff can read a student's
+  // scan only with screening rights, and the read itself is audited because the
+  // file is personal data (a college letter, an ID, a police clearance).
+  router.get(
+    '/applications/:id/documents/:documentId/download',
+    requirePermission(deps, 'screening:read'),
+    async (req, res, next) => {
+      try {
+        if (!deps.prisma) throw new ApiError(503, 'DB_UNAVAILABLE', 'Database is not configured for this process');
+        const applicationId = String(req.params.id);
+        const documentId = String(req.params.documentId);
+
+        const document = await deps.prisma.document.findFirst({
+          where: { id: documentId, applicationId, deletedAt: null },
+        });
+        if (!document) throw badRequest('DOCUMENT_NOT_FOUND', 'No such document on this application');
+
+        const file = await deps.prisma.fileObject.findFirst({
+          where: { id: document.fileId, deletedAt: null },
+        });
+        if (!file) throw badRequest('FILE_MISSING', 'The stored copy of this document is missing');
+
+        const buffer = await readStoredFile(deps.env, file.storageKey);
+
+        const actor = res.locals.staff as { id: string; role: string } | undefined;
+        await deps.prisma.auditLog
+          .create({
+            data: {
+              actorId: actor?.id ?? null,
+              actorRole: (actor?.role ?? 'ADMIN_HR') as never,
+              action: 'DOCUMENT_DOWNLOADED',
+              entity: 'document',
+              entityId: document.id,
+              reason: 'staff download for screening',
+              ip: req.ip ?? null,
+              zone: 'internal',
+            },
+          })
+          .catch(() => undefined);
+
+        res.setHeader('Content-Type', file.mime || 'application/octet-stream');
+        res.setHeader(
+          'Content-Disposition',
+          `attachment; filename="${downloadName(document.kind, file.storageKey.split('/').pop() ?? 'document')}"`,
+        );
+        res.setHeader('Cache-Control', 'no-store');
+        res.setHeader('X-Content-Type-Options', 'nosniff');
+        res.send(buffer);
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
 
   // 2a. Download Application Packet PDF
   router.get('/applications/:id/summary-pdf', async (req, res, next) => {
@@ -608,6 +664,79 @@ export const caseworkRouter = (deps: AppDeps): Router => {
       next(err);
     }
   });
+
+  // 16a. Monthly attendance register and its CSV
+  router.get(
+    '/attendance/report',
+    requirePermission(deps, 'reporting:read'),
+    async (req, res, next) => {
+      try {
+        if (!deps.prisma) throw new ApiError(503, 'DB_UNAVAILABLE', 'Database is not configured for this process');
+        const month = String(req.query.month ?? '').trim() || new Date().toISOString().slice(0, 7);
+        if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
+          throw badRequest('INVALID_MONTH', 'Month must be in YYYY-MM form');
+        }
+        const report = await attendanceReport({ prisma: deps.prisma }, month);
+        res.json(report);
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  router.get(
+    '/attendance/export.csv',
+    requirePermission(deps, 'export:run'),
+    async (req, res, next) => {
+      try {
+        if (!deps.prisma) throw new ApiError(503, 'DB_UNAVAILABLE', 'Database is not configured for this process');
+        const month = String(req.query.month ?? '').trim() || new Date().toISOString().slice(0, 7);
+        if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
+          throw badRequest('INVALID_MONTH', 'Month must be in YYYY-MM form');
+        }
+        const report = await attendanceReport({ prisma: deps.prisma }, month);
+
+        const csvCell = (value: unknown): string => {
+          const text = value === null || value === undefined ? '' : String(value);
+          return /[",\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+        };
+
+        const header = [
+          'Application No',
+          'Student',
+          'Level',
+          'Lab',
+          'Directorate',
+          'Month',
+          'Present Days',
+          'Total Days',
+          'Percent',
+        ];
+        const lines = report.entries.map((entry) =>
+          [
+            entry.applicationNo ?? '',
+            entry.studentName,
+            entry.level,
+            entry.labCode,
+            entry.directorate ?? '',
+            report.month,
+            entry.presentDays,
+            entry.totalDays,
+            entry.percent,
+          ]
+            .map(csvCell)
+            .join(','),
+        );
+
+        res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+        res.setHeader('Content-Disposition', `attachment; filename="ADA-attendance-${report.month}.csv"`);
+        res.setHeader('Cache-Control', 'no-store');
+        res.send([header.join(','), ...lines].join('\n'));
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
 
   // 17. Directorate list
   router.get('/meta/directorates', async (_req, res, next) => {

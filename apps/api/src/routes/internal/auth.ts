@@ -3,7 +3,13 @@ import rateLimit from 'express-rate-limit';
 import { staffEmailRequestSchema, otpVerifySchema, totpVerifySchema } from '@ada/shared';
 import type { AppDeps } from '../../types.js';
 import { ApiError } from '../../lib/http.js';
-import { requestStaffOtp, verifyStaffOtp, verifyStaffTotp, staffLogoutAudit } from '../../services/staff-auth.service.js';
+import {
+  requestStaffOtp,
+  verifyStaffOtp,
+  verifyStaffTotp,
+  completeTotpEnrolment,
+  staffLogoutAudit,
+} from '../../services/staff-auth.service.js';
 import { regenerateSession, destroySession } from '../../middleware/auth.js';
 
 const emailLimiter = rateLimit({
@@ -76,6 +82,31 @@ export const staffAuthRouter = (deps: AppDeps): Router => {
         directorateId: user.directorateId,
       },
       permissions,
+    });
+  });
+
+  // First authenticator for an account that has none (see verifyStaffOtp).
+  router.post('/totp/enrol', verifyLimiter, async (req, res) => {
+    const body = totpVerifySchema.parse(req.body);
+    const { user, permissions } = await completeTotpEnrolment(
+      { prisma: requirePrisma(), env: deps.env },
+      { pendingId: body.pendingId, code: body.code, ip: req.ip ?? null },
+    );
+
+    await regenerateSession(req);
+    req.session.auth = { kind: 'staff', zone: 'internal', userId: user.id, role: user.role };
+
+    res.json({
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        employeeCode: user.employeeCode,
+        directorateId: user.directorateId,
+      },
+      permissions,
+      enrolled: true,
     });
   });
 

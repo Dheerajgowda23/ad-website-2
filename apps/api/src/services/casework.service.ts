@@ -168,6 +168,7 @@ export const getApplicationPacket = async (
     directorate: app.directorate ? { id: app.directorate.id, code: app.directorate.code, name: app.directorate.name } : null,
     documents: app.documents.map((d) => ({
       id: d.id,
+      fileId: d.fileId,
       kind: d.kind,
       version: d.version,
       sha256: d.sha256,
@@ -964,6 +965,51 @@ export const getSeatLedger = async (deps: { prisma: PrismaClient }) => {
       },
     },
     directorates: Object.values(byDirectorate),
+  };
+};
+
+/**
+ * Monthly attendance register: the report Admin & HR and the Director need, and
+ * the source for the CSV that goes to the establishment section.
+ */
+export const attendanceReport = async (
+  deps: { prisma: PrismaClient },
+  month: string,
+) => {
+  const rows = await deps.prisma.attendance.findMany({
+    where: { month },
+    include: {
+      application: { include: { student: true, lab: true, directorate: true } },
+    },
+    orderBy: { application: { applicationNo: 'asc' } },
+  });
+
+  const entries = rows.map((row) => ({
+    applicationId: row.applicationId,
+    applicationNo: row.application.applicationNo,
+    studentName: row.application.student.fullName,
+    level: row.application.level,
+    labCode: row.application.lab.code,
+    directorate: row.application.directorate?.name ?? null,
+    presentDays: row.presentDays,
+    totalDays: row.totalDays,
+    percent: row.totalDays > 0 ? Math.round((row.presentDays / row.totalDays) * 100) : 0,
+    enteredAt: row.enteredAt,
+  }));
+
+  const presentDays = entries.reduce((sum, entry) => sum + entry.presentDays, 0);
+  const totalDays = entries.reduce((sum, entry) => sum + entry.totalDays, 0);
+
+  return {
+    month,
+    entries,
+    summary: {
+      trainees: entries.length,
+      presentDays,
+      totalDays,
+      percent: totalDays > 0 ? Math.round((presentDays / totalDays) * 100) : 0,
+      belowFullAttendance: entries.filter((entry) => entry.percent < 100).length,
+    },
   };
 };
 

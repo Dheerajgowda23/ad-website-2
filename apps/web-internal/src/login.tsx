@@ -18,6 +18,16 @@ interface TotpStageResponse {
   devTotpCode?: string;
 }
 
+interface EnrolmentStageResponse {
+  stage: 'TOTP_ENROLMENT_REQUIRED';
+  pendingId: string;
+  expiresInSeconds: number;
+  secret: string;
+  otpauthUri: string;
+  qrDataUrl: string;
+  devTotpCode?: string;
+}
+
 interface SessionResponse {
   user: { id: string; name: string; email: string; role: Role };
   permissions: string[];
@@ -34,7 +44,8 @@ export const LoginPage = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
-  const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
+  const [enrolment, setEnrolment] = useState<EnrolmentStageResponse | null>(null);
   const [email, setEmail] = useState('');
   const [challengeId, setChallengeId] = useState('');
   const [pendingId, setPendingId] = useState('');
@@ -62,7 +73,7 @@ export const LoginPage = () => {
 
   const verifyOtp = useMutation({
     mutationFn: () =>
-      api<TotpStageResponse>('/api/staff/auth/otp/verify', {
+      api<TotpStageResponse | EnrolmentStageResponse>('/api/staff/auth/otp/verify', {
         method: 'POST',
         body: JSON.stringify({ challengeId, code: otp }),
       }),
@@ -71,7 +82,26 @@ export const LoginPage = () => {
       setDevTotp(data.devTotpCode ?? null);
       setTotp('');
       setError(null);
+      if (data.stage === 'TOTP_ENROLMENT_REQUIRED') {
+        // First sign-in on this account: enrol its authenticator now.
+        setEnrolment(data);
+        setStep(4);
+        return;
+      }
       setStep(3);
+    },
+    onError: (mutationError) => setError(errorText(mutationError)),
+  });
+
+  const completeEnrolment = useMutation({
+    mutationFn: () =>
+      api<SessionResponse>('/api/staff/auth/totp/enrol', {
+        method: 'POST',
+        body: JSON.stringify({ pendingId: enrolment?.pendingId ?? '', code: totp }),
+      }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['me'] });
+      navigate('/dashboard', { replace: true });
     },
     onError: (mutationError) => setError(errorText(mutationError)),
   });
@@ -112,6 +142,7 @@ export const LoginPage = () => {
         {step === 1 && 'Use your ADA email address. We send a one-time code to it.'}
         {step === 2 && 'Enter the six-digit code from your ADA mailbox.'}
         {step === 3 && 'Enter the code from your enrolled authenticator.'}
+        {step === 4 && 'This account has no authenticator yet. Scan the code below, then enter the six-digit code it shows.'}
       </p>
 
       {step === 1 && (
@@ -215,6 +246,55 @@ export const LoginPage = () => {
           </div>
           <button className="btn" type="submit" disabled={verifyTotp.isPending || totp.length !== 6}>
             {verifyTotp.isPending ? 'Verifying…' : 'Sign in'}
+          </button>
+          {devHint('authenticator', devTotp, setTotp)}
+        </form>
+      )}
+
+      {step === 4 && enrolment && (
+        <form
+          className="mt-6 space-y-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            completeEnrolment.mutate();
+          }}
+        >
+          <div className="rounded-md border border-slate-200 bg-white p-4 text-center">
+            <img
+              src={enrolment.qrDataUrl}
+              alt="Authenticator enrolment QR code"
+              className="mx-auto h-48 w-48"
+            />
+            <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
+              Scan with Microsoft Authenticator, Google Authenticator or FreeOTP. If the camera
+              cannot be used, add this key by hand:
+            </p>
+            <code className="mt-1 block break-all rounded bg-slate-50 px-2 py-1 font-mono text-[11px] text-navy-900">
+              {enrolment.secret}
+            </code>
+          </div>
+          <div>
+            <label className="label" htmlFor="enrol-code">
+              Code shown by the app
+            </label>
+            <input
+              id="enrol-code"
+              className="field font-mono text-lg tracking-[0.4em]"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              maxLength={6}
+              placeholder="000000"
+              value={totp}
+              onChange={(event) => setTotp(event.target.value.replace(/\D/g, ''))}
+              required
+            />
+          </div>
+          <button
+            className="btn"
+            type="submit"
+            disabled={completeEnrolment.isPending || totp.length !== 6}
+          >
+            {completeEnrolment.isPending ? 'Enrolling…' : 'Enrol and sign in'}
           </button>
           {devHint('authenticator', devTotp, setTotp)}
         </form>

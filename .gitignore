@@ -8,3 +8,17 @@ dist/
 coverage/
 apps/api/prisma/*.db
 screenshots/
+.tools/
+# Local document storage when the API runs outside a container.
+data/
+# Offline bundle payloads: large, machine-generated, reproducible from the script.
+intranet-bundle/images/
+intranet-bundle/.env
+intranet-bundle/SHA256SUMS.txt
+intranet-bundle/*.tar
+intranet-bundle/*.tar.gz
+# Downloaded installers and payloads (hundreds of MB, reproducibly fetched).
+intranet-bundle/prerequisites/windows/*.exe
+intranet-bundle/prerequisites/windows/*.msi
+intranet-bundle/prerequisites/linux/
+intranet-bundle/source/

@@ -1,4 +1,7 @@
 import { randomUUID } from 'node:crypto';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import request from 'supertest';
 import { PrismaClient } from '@prisma/client';
@@ -32,11 +35,15 @@ if (!ownerUrl || !publicUrl || !internalUrl) {
   );
 }
 
+// Uploads are real files on disk in these tests, in a throwaway directory.
+const storageDir = mkdtempSync(join(tmpdir(), 'ada-files-'));
+
 const publicEnv: Env = loadEnv({
   ...process.env,
   ZONE: 'public',
   PORTAL_ENV: 'test',
   ALLOW_DEV_OTP: 'true',
+  FILE_STORAGE_DIR: storageDir,
 } as NodeJS.ProcessEnv);
 
 const internalEnv: Env = loadEnv({
@@ -44,11 +51,13 @@ const internalEnv: Env = loadEnv({
   ZONE: 'internal',
   PORTAL_ENV: 'test',
   ALLOW_DEV_OTP: 'true',
+  FILE_STORAGE_DIR: storageDir,
 } as NodeJS.ProcessEnv);
 
 const suffix = randomUUID().slice(0, 8);
 const studentEmail = `student-${suffix}@example.edu.in`;
 const staffEmail = `staff-${suffix}@ada.gov.in`;
+const newStaffEmail = `newstaff-${suffix}@ada.gov.in`;
 
 const owner = new PrismaClient({ datasources: { db: { url: ownerUrl } } });
 const publicDb = new PrismaClient({ datasources: { db: { url: publicUrl } } });
@@ -82,6 +91,7 @@ interface Fixtures {
   expiredCode: string;
   staffId: string;
   staffTotpSecret: string;
+  unenrolledStaffId: string;
   createdApplicationIds: string[];
 }
 
@@ -149,6 +159,16 @@ beforeAll(async () => {
     },
   });
 
+  // An account with no authenticator yet, for the first-sign-in enrolment flow.
+  const unenrolled = await owner.user.create({
+    data: {
+      role: 'GUIDE',
+      name: 'New Guide',
+      email: newStaffEmail,
+      employeeCode: `N-${suffix}`,
+    },
+  });
+
   fx = {
     labId: lab.id,
     sponsorId: sponsor.id,
@@ -158,6 +178,7 @@ beforeAll(async () => {
     expiredCode,
     staffId: staff.id,
     staffTotpSecret,
+    unenrolledStaffId: unenrolled.id,
     createdApplicationIds: [],
   };
 });
@@ -175,10 +196,12 @@ afterAll(async () => {
     await owner.referralCode.deleteMany({ where: { sponsorId: fx.sponsorId } });
     await owner.sponsor.deleteMany({ where: { id: fx.sponsorId } });
     await owner.lab.deleteMany({ where: { id: fx.labId } });
-    await owner.user.deleteMany({ where: { id: fx.staffId } });
+    await owner.user.deleteMany({ where: { id: { in: [fx.staffId, fx.unenrolledStaffId] } } });
     await owner.otpChallenge.deleteMany({ where: { subjectHash: sha256Hex(studentEmail) } });
     await owner.otpChallenge.deleteMany({ where: { subjectHash: sha256Hex(staffEmail) } });
+    await owner.otpChallenge.deleteMany({ where: { subjectHash: sha256Hex(newStaffEmail) } });
   }
+  rmSync(storageDir, { recursive: true, force: true });
   for (const store of [publicStore, internalStore]) {
     const closable = store as unknown as { close?: (callback?: () => void) => void };
     closable.close?.(() => undefined);
@@ -270,6 +293,40 @@ describe('public zone: referral redemption and email OTP against Postgres', () =
     expect(notification?.status).toBe('QUEUED');
   });
 
+  it('writes an uploaded document to disk and serves it back only to its owner', async () => {
+    const content = Buffer.from('%PDF-1.4\nADA test college letter\n%%EOF\n');
+    const upload = await agent.post('/api/public/application/documents').send({
+      kind: 'COLLEGE_LETTER',
+      fileName: 'college-letter.pdf',
+      mime: 'application/pdf',
+      size: content.length,
+      contentBase64: content.toString('base64'),
+    });
+
+    expect(upload.status).toBe(201);
+    expect(upload.body.document.kind).toBe('COLLEGE_LETTER');
+    expect(upload.body.document.version).toBe(1);
+
+    const documentId = upload.body.document.id as string;
+
+    // The row exists AND the bytes are on disk under the configured root.
+    const stored = await owner.document.findUniqueOrThrow({ where: { id: documentId } });
+    const file = await owner.fileObject.findUniqueOrThrow({ where: { id: stored.fileId } });
+    expect(file.storageKey).toContain('applications/');
+    expect(file.size).toBe(content.length);
+
+    const download = await agent.get(`/api/public/application/documents/${documentId}/download`);
+    expect(download.status).toBe(200);
+    expect(download.headers['content-disposition']).toContain('attachment');
+    expect(download.headers['x-content-type-options']).toBe('nosniff');
+
+    // No session, no bytes.
+    const anonymous = await request(publicApp).get(
+      `/api/public/application/documents/${documentId}/download`,
+    );
+    expect(anonymous.status).toBe(401);
+  });
+
   it('refuses a code that has already been used', async () => {
     const response = await request(publicApp)
       .post('/api/public/auth/redeem')
@@ -320,6 +377,44 @@ describe('intranet zone: email OTP then TOTP against Postgres', () => {
     const cookieHeader = cookies.map((cookie) => cookie.split(';')[0]).join('; ');
     const onPublic = await request(publicApp).get('/api/staff/me').set('Cookie', cookieHeader);
     expect(onPublic.status).toBe(404);
+  });
+
+  it('enrols the first authenticator for an account that has none', async () => {
+    const agent = request.agent(internalApp);
+
+    const otpResponse = await agent.post('/api/staff/auth/email/request').send({ email: newStaffEmail });
+    expect(otpResponse.status).toBe(202);
+
+    const otpVerify = await agent
+      .post('/api/staff/auth/otp/verify')
+      .send({ challengeId: otpResponse.body.challengeId, code: otpResponse.body.devCode });
+
+    expect(otpVerify.status).toBe(200);
+    expect(otpVerify.body.stage).toBe('TOTP_ENROLMENT_REQUIRED');
+    expect(otpVerify.body.qrDataUrl.startsWith('data:image/png;base64,')).toBe(true);
+    expect(otpVerify.body.otpauthUri).toContain('otpauth://totp/');
+
+    const enrol = await agent.post('/api/staff/auth/totp/enrol').send({
+      pendingId: otpVerify.body.pendingId,
+      code: otpVerify.body.devTotpCode,
+    });
+
+    expect(enrol.status).toBe(200);
+    expect(enrol.body.enrolled).toBe(true);
+    expect(enrol.body.permissions).toEqual(['trainee:read', 'attendance:write', 'clearance:write']);
+
+    const me = await agent.get('/api/staff/me');
+    expect(me.status).toBe(200);
+    expect(me.body.role).toBe('GUIDE');
+
+    const user = await owner.user.findUniqueOrThrow({ where: { id: fx.unenrolledStaffId } });
+    expect(user.totpSecret).toBeTruthy();
+    expect(user.totpEnrolledAt).not.toBeNull();
+
+    const audit = await owner.auditLog.findMany({
+      where: { entityId: fx.unenrolledStaffId, action: 'AUTH_TOTP_ENROLLED' },
+    });
+    expect(audit.length).toBeGreaterThan(0);
   });
 
   it('refuses a wrong TOTP code', async () => {
