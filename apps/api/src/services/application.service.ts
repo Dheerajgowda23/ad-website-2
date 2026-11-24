@@ -118,6 +118,24 @@ export const submitStudentApplication = async (
   }
 
   const now = new Date();
+  const aadhaarRefHash = hashAadhaar(input.aadhaarLast4, deps.env);
+
+  // One Aadhaar per intake year. Checked up front so a duplicate is a clear
+  // conflict, not a unique-constraint 500 (the DB constraint is the backstop).
+  const duplicate = await deps.prisma.student.findFirst({
+    where: {
+      aadhaarRefHash,
+      intakeYear: application.intakeYear,
+      id: { not: application.studentId },
+    },
+    select: { id: true },
+  });
+  if (duplicate) {
+    throw conflict(
+      'AADHAAR_ALREADY_USED',
+      'An application for this intake year already exists for these Aadhaar details.',
+    );
+  }
 
   const outcome = await deps.prisma.$transaction(async (tx) => {
     let applicationNo = application.applicationNo;
@@ -154,7 +172,7 @@ export const submitStudentApplication = async (
         gender: input.gender,
         nationality: input.nationality,
         aadhaarLast4: input.aadhaarLast4,
-        aadhaarRefHash: hashAadhaar(input.aadhaarLast4, deps.env),
+        aadhaarRefHash,
         phone: input.phone,
         altPhone: input.altPhone ?? null,
         permanentAddress: input.permanentAddress,

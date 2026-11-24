@@ -412,6 +412,68 @@ describe('Full End-to-End Workflow & Milestone Verification', () => {
     expect(submitRes.body.revision).toBe(1);
   });
 
+  it('M4: The same Aadhaar cannot be submitted twice in one intake year', async () => {
+    const secondEmail = `second-${suffix}@college.edu.in`;
+    const referral = await sponsorAgent
+      .post('/api/staff/referrals')
+      .send({ level: 'UG', studentName: 'Second Student', studentEmail: secondEmail })
+      .expect(200);
+
+    const secondAgent = request.agent(publicApp);
+    const redeem = await secondAgent
+      .post('/api/public/auth/redeem')
+      .send({ code: referral.body.code })
+      .expect(200);
+    const otp = await secondAgent
+      .post('/api/public/auth/otp/request')
+      .send({ referralToken: redeem.body.referralToken, email: secondEmail })
+      .expect(202);
+    await secondAgent
+      .post('/api/public/auth/otp/verify')
+      .send({ challengeId: otp.body.challengeId, code: otp.body.devCode })
+      .expect(200);
+
+    await secondAgent
+      .post('/api/public/application/documents')
+      .send({
+        kind: 'COLLEGE_LETTER',
+        fileName: 'college_letter.pdf',
+        mime: 'application/pdf',
+        size: 1024,
+        contentBase64: Buffer.from('PDF_DUPLICATE_AADHAAR').toString('base64'),
+      })
+      .expect(200);
+
+    const res = await secondAgent
+      .post('/api/public/application/submit')
+      .send({
+        fullName: 'Second Student',
+        dob: '2003-01-01',
+        fatherName: 'Second Parent',
+        gender: 'Female',
+        nationality: 'Indian',
+        aadhaarLast4: testAadhaar,
+        phone: '9876543211',
+        permanentAddress: '45 Residency Road, Bengaluru',
+        localAddress: '45 Residency Road, Bengaluru',
+        discipline: 'Aeronautical Engineering',
+        branchCode: 'AE01',
+        degree: 'B.Tech',
+        semester: '6th',
+        yearOfStudy: '3rd Year',
+        cgpa: 8.1,
+        durationWeeks: 16,
+        startDate: '2026-06-01',
+        endDate: '2026-09-20',
+        topic: 'Composite material fatigue testing',
+        synopsis: 'Fatigue behaviour of carbon-fibre composite coupons under cyclic loading.',
+        declarationSigned: true,
+      });
+
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe('AADHAAR_ALREADY_USED');
+  });
+
   it('M4: Student can edit while SUBMITTED, with revision history and optimistic lock', async () => {
     // 1. Edit submitted application
     const editRes = await studentAgent

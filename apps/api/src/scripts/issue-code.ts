@@ -39,7 +39,7 @@ console.log(`Referral Code : ${result.code}`);
 console.log(`Level         : ${result.level}`);
 console.log(`Student Name  : ${name}`);
 console.log(`Student Email : ${email}`);
-console.log(`Sponsoring Lab: ${result.sponsorName} (${result.labCode})`);
+console.log(`Sponsor       : ${result.sponsorName} (${result.labCode})`);
 console.log(`Expires At    : ${result.expiresAt.toISOString()}`);
 console.log('========================================\n');
 
