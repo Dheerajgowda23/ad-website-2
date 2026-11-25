@@ -130,8 +130,11 @@ export const sameOriginGuard = (deps: AppDeps) => {
       next();
       return;
     }
-    const origin = req.get('origin');
-    if (origin && !allowed.has(origin.replace(/\/$/, ''))) {
+    const origin = req.get('origin')?.replace(/\/$/, '');
+    // Each API process also serves its zone's built SPA, so the page's origin is
+    // the process's own host. That is same-origin by definition, allow it too.
+    const selfOrigin = `${req.protocol}://${req.get('host')}`;
+    if (origin && !allowed.has(origin) && origin !== selfOrigin) {
       void logZoneEvent(deps.prisma, {
         zone: deps.zone,
         route: req.originalUrl,

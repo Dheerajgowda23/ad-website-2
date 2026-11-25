@@ -88,6 +88,21 @@ describe('role guard', () => {
     expect(response.body.error.code).toBe('FOREIGN_ORIGIN');
   });
 
+  it('accepts a mutation whose origin is the host that served the page', async () => {
+    const { internalApp, cookie } = await staffSession(adminUser.id, 'ADMIN_HR');
+
+    // The containers serve their own built SPA, so the browser's Origin is the
+    // API host, which is not one of the Vite dev origins in the allowlist.
+    const response = await request(internalApp)
+      .put('/api/staff/config/flags/committee_scoring')
+      .set('Cookie', cookie)
+      .set('Host', 'portal.ada.internal:4001')
+      .set('Origin', 'http://portal.ada.internal:4001')
+      .send({ zonePublic: false, zoneInternal: true });
+
+    expect(response.status).toBe(200);
+  });
+
   it('reports the permission set the session actually holds', async () => {
     const { internalApp, cookie } = await staffSession(committeeUser.id, 'COMMITTEE');
 
