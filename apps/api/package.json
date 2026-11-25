@@ -12,6 +12,7 @@
     "db:migrate": "prisma migrate deploy",
     "db:migrate:dev": "prisma migrate dev",
     "db:seed": "node --import tsx src/seed.ts",
+    "db:studio": "prisma studio --port 5556 --browser none",
     "totp": "node --import tsx src/scripts/totp-code.ts",
     "totp:enroll": "node --import tsx src/scripts/enroll-totp.ts",
     "issue-code": "node --import tsx src/scripts/issue-code.ts"

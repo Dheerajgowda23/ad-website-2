@@ -57,6 +57,11 @@ export const saveStudentDraft = async (
         ...(input.altPhone !== undefined ? { altPhone: input.altPhone } : {}),
         ...(input.permanentAddress ? { permanentAddress: input.permanentAddress } : {}),
         ...(input.localAddress ? { localAddress: input.localAddress } : {}),
+        ...(input.collegeName ? { collegeName: input.collegeName } : {}),
+        ...(input.universityName ? { universityName: input.universityName } : {}),
+        ...(input.rollNumber ? { rollNumber: input.rollNumber } : {}),
+        ...(input.collegeAddress ? { collegeAddress: input.collegeAddress } : {}),
+        ...(input.category ? { category: input.category } : {}),
       },
     });
 
@@ -177,6 +182,11 @@ export const submitStudentApplication = async (
         altPhone: input.altPhone ?? null,
         permanentAddress: input.permanentAddress,
         localAddress: input.localAddress,
+        collegeName: input.collegeName,
+        universityName: input.universityName,
+        rollNumber: input.rollNumber,
+        collegeAddress: input.collegeAddress,
+        category: input.category,
       },
     });
 
@@ -220,6 +230,11 @@ export const submitStudentApplication = async (
         altPhone: input.altPhone,
         permanentAddress: input.permanentAddress,
         localAddress: input.localAddress,
+        collegeName: input.collegeName,
+        universityName: input.universityName,
+        rollNumber: input.rollNumber,
+        collegeAddress: input.collegeAddress,
+        category: input.category,
       },
       academic: {
         discipline: input.discipline,
@@ -340,6 +355,13 @@ export const editSubmittedApplication = async (
   if (input.localAddress !== undefined && input.localAddress !== application.student.localAddress) {
     studentUpdates.localAddress = input.localAddress;
     changedFields.push('localAddress');
+  }
+  for (const key of ['collegeName', 'universityName', 'rollNumber', 'collegeAddress', 'category'] as const) {
+    const value = input[key];
+    if (value !== undefined && value !== application.student[key]) {
+      studentUpdates[key] = value;
+      changedFields.push(key);
+    }
   }
 
   if (input.discipline !== undefined && input.discipline !== application.discipline) {
@@ -827,6 +849,11 @@ export const loadDetailedStudentApplication = async (
       altPhone: row.student.altPhone,
       permanentAddress: row.student.permanentAddress,
       localAddress: row.student.localAddress,
+      collegeName: row.student.collegeName,
+      universityName: row.student.universityName,
+      rollNumber: row.student.rollNumber,
+      collegeAddress: row.student.collegeAddress,
+      category: row.student.category,
       aadhaarLast4: row.student.aadhaarLast4,
       aadhaarMasked: maskAadhaar(row.student.aadhaarLast4),
     },

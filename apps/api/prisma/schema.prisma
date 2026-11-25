@@ -283,6 +283,13 @@ model Student {
   altPhone         String?  @map("alt_phone")
   permanentAddress String?  @map("permanent_address")
   localAddress     String?  @map("local_address")
+  /// College particulars the candidate supplies; printed on the recommendation
+  /// letter, offer letter and certificate.
+  collegeName      String?  @map("college_name")
+  universityName   String?  @map("university_name")
+  rollNumber       String?  @map("roll_number")
+  collegeAddress   String?  @map("college_address")
+  category         String?
   photoFileId      String?  @map("photo_file_id")
   intakeYear       Int      @map("intake_year")
   createdAt        DateTime @default(now()) @map("created_at")

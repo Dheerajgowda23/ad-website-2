@@ -2,71 +2,84 @@ import { Navbar } from './Navbar.js';
 
 const QA: { q: string; a: string }[] = [
   {
-    q: 'How do I apply? There is no Apply button.',
-    a: 'Correct - there is no open application. Entry is only by redeeming a referral code issued by an ADA or DRDO employee. Ask the employee to issue a code from the intranet portal; you then redeem it here with your own email address.',
+    q: 'How do I apply? There is no public Apply button.',
+    a: 'Correct — there is no open application form. Entry is solely through redeeming a valid one-time referral code issued by an active ADA or DRDO employee via the internal portal. You then redeem that code using your email address.',
   },
   {
-    q: 'Is there a stipend, fee or industrial training?',
-    a: 'No. ADA does not pay a stipend, does not charge a fee, and this is not an industrial training placement. It is project work or internship training under an ADA guide.',
+    q: 'Is there a stipend, fee, or commercial industrial training placement?',
+    a: 'No. ADA does not disburse stipends, does not levy fees, and does not conduct industrial training placements. It is academic project work and research internship training under an authorized ADA scientist guide.',
   },
   {
-    q: 'Who is eligible?',
-    a: 'UG: BE/B.Tech students after the 4th or 6th semester, for 12 to 20 weeks. PG: ME/M.Tech students in the 3rd or 4th semester, for 6 to 12 months. Seats are limited (50 UG and 25 PG at a time).',
+    q: 'Who is eligible to participate?',
+    a: 'UG: BE/B.Tech students after their 4th or 6th semester, for 12 to 20 weeks. PG: ME/M.Tech students in their 3rd or 4th semester, for 6 to 12 months. Seats are strictly limited to 50 UG and 25 PG concurrent seats.',
   },
   {
-    q: 'Do I need a college login?',
-    a: 'No. There are no college accounts and no college logins. Your college signs and stamps the recommendation letter on paper; you scan it and upload it, and ADA Admin & HR verifies that scan.',
+    q: 'Do colleges have dedicated portal accounts or logins?',
+    a: 'No. There are no institutional accounts. Your college issues the signed and stamped recommendation letter (Annexure-II) on physical letterhead, which you scan and upload for ADA HR verification.',
   },
   {
-    q: 'Can I edit my application after submitting it?',
-    a: 'Yes, while it is SUBMITTED or returned for correction. Every save is stored as an immutable revision with a hash, and editing locks when Admin & HR opens the packet for screening. You will see the lock notice on your application page.',
+    q: 'Can I edit my application dossier after submission?',
+    a: 'Yes, while the status is SUBMITTED or returned for correction. Every edit creates an immutable revision. Once Admin & HR opens the packet for formal screening, editing is temporarily locked.',
   },
   {
-    q: 'What documents will I be asked for?',
-    a: 'The signed college recommendation letter is mandatory. Depending on the stage, a photo, signed undertaking/declaration, and at reporting time a police clearance and photo ID.',
+    q: 'What verification documents are mandatory?',
+    a: 'The physical signed and stamped college recommendation letter is mandatory. At reporting time, an original Police Clearance Certificate (PCC) and Government-issued photo ID are required for facility badge issuance.',
   },
   {
-    q: 'How do I check my status?',
-    a: 'Use Status Check with your application number and date of birth. Before submission there is no application number; the number is allocated at submission.',
+    q: 'How do I check my ongoing application status?',
+    a: 'Use the Status Check utility with your official application number (e.g. ADA/INT/R/2026/0001) and registered date of birth.',
   },
   {
-    q: 'Is my Aadhaar number stored?',
-    a: 'No. Only the last four digits and a keyed hash used for de-duplication are stored, and the number is masked everywhere, including PDFs.',
+    q: 'How is candidate identity and Aadhaar data secured?',
+    a: 'Aadhaar numbers are never stored in full. Only the last 4 digits and an HMAC-SHA256 hash are kept for deduplication. Numbers are masked across all administrative screens and generated PDF passes.',
   },
   {
-    q: 'How is my certificate verified?',
-    a: 'Every certificate carries a serial number and a QR code. Anyone can confirm it on the Verify Certificate page; a certificate cannot be issued twice for the same application.',
-  },
-  {
-    q: 'Who do I contact about a referral code?',
-    a: 'The ADA or DRDO employee who referred you, or Admin & HR at ADA for policy questions. Referral codes are single-use and expire.',
+    q: 'How is completion certification authenticated?',
+    a: 'Every issued certificate carries an encrypted serial identifier and a cryptographic QR code. Anyone can verify its legitimacy publicly via the Verify Certificate page.',
   },
 ];
 
 export const FaqPage = () => (
-  <div className="min-h-screen bg-slate-50">
+  <div className="min-h-screen blueprint-bg text-slate-800 flex flex-col font-sans">
+    {/* Top classification indicator */}
+    <div className="border-b border-slate-200 bg-slate-900 text-slate-300 text-[11px] py-2 px-6">
+      <div className="mx-auto max-w-6xl flex items-center justify-between">
+        <span className="font-medium text-slate-300">MISSION INTELLIGENCE &amp; PROCEDURES</span>
+        <span className="font-mono text-[10px] text-slate-400">FAQ REGISTRY</span>
+      </div>
+    </div>
+
     <Navbar />
-    <main className="mx-auto max-w-3xl px-6 py-12">
-      <h1 className="text-2xl font-semibold text-navy-950">Frequently asked questions</h1>
-      <p className="mt-2 text-sm text-slate-600">
-        Policy questions about internship and project-work training at ADA, Bengaluru.
+
+    <main className="mx-auto max-w-4xl flex-1 px-6 py-12 w-full">
+      <span className="text-[10px] font-mono font-bold uppercase tracking-[0.25em] text-blue-700 block mb-1">
+        // PROTOCOL QUESTIONS
+      </span>
+      <h1 className="text-3xl font-bold tracking-tight text-slate-900">
+        Frequently Asked Questions
+      </h1>
+      <p className="mt-2 text-sm text-slate-600 max-w-2xl leading-relaxed">
+        Key regulatory and policy answers regarding undergraduate and postgraduate project-work training
+        at Aeronautical Development Agency (ADA), Bengaluru.
       </p>
 
-      <div className="mt-8 space-y-4">
+      <div className="mt-8 space-y-3.5">
         {QA.map((item) => (
-          <details key={item.q} className="group rounded-md border border-slate-200 bg-white p-4">
-            <summary className="cursor-pointer text-sm font-semibold text-navy-900 marker:text-teal-600">
-              {item.q}
+          <details key={item.q} className="group rounded-xl border border-slate-200 bg-white p-5 shadow-2xs">
+            <summary className="cursor-pointer text-sm font-bold text-slate-900 group-open:text-blue-600 transition-colors list-none flex justify-between items-center">
+              <span>{item.q}</span>
+              <span className="text-blue-600 font-mono text-base font-bold ml-4 group-open:rotate-45 transition-transform">+</span>
             </summary>
-            <p className="mt-2 text-sm leading-relaxed text-slate-600">{item.a}</p>
+            <p className="mt-3 text-xs sm:text-sm text-slate-600 leading-relaxed border-t border-slate-100 pt-3">
+              {item.a}
+            </p>
           </details>
         ))}
       </div>
-
-      <p className="mt-8 text-xs text-slate-500">
-        Reference: ADA/ADM/EST/0267/4/S.Trng: 2025 dated 31 Dec 2025. Where this page and the
-        signed guidelines differ, the guidelines prevail.
-      </p>
     </main>
+
+    <footer className="border-t border-slate-200 bg-white py-6 text-center text-xs text-slate-500">
+      Aeronautical Development Agency · P.B. No. 1718, Vimanapura Post, Bengaluru 560017
+    </footer>
   </div>
 );

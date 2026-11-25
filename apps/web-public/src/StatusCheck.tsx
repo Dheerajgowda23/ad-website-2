@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 import { Navbar } from './Navbar.js';
 import { api, ApiError } from './api.js';
 
@@ -35,15 +36,26 @@ export const StatusCheckPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col">
+    <div className="min-h-screen blueprint-bg text-slate-800 flex flex-col font-sans">
+      {/* Top classification header */}
+      <div className="border-b border-slate-200 bg-slate-900 text-slate-300 text-[11px] py-2 px-6">
+        <div className="mx-auto max-w-6xl flex items-center justify-between">
+          <span className="font-medium text-slate-300">APPLICATION TRACKING DOSSIER</span>
+          <span className="font-mono text-[10px] text-slate-400">LOOKUP: REAL-TIME SECURE QUERY</span>
+        </div>
+      </div>
+
       <Navbar />
 
       <main className="mx-auto max-w-xl flex-1 px-6 py-12 w-full space-y-6">
-        <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
           <div className="text-center">
-            <h1 className="text-xl font-bold text-navy-950">Application Status Tracking</h1>
-            <p className="mt-1 text-xs text-slate-500">
-              Check the current processing status of your submitted application
+            <span className="text-[10px] font-mono tracking-[0.25em] uppercase text-blue-700 font-bold block mb-1">
+              // STATUS VERIFICATION
+            </span>
+            <h1 className="text-2xl font-bold text-slate-900">Application Status Tracking</h1>
+            <p className="mt-2 text-xs text-slate-500">
+              Query current screening, Directorate confirmation, and security clearance status.
             </p>
           </div>
 
@@ -54,16 +66,17 @@ export const StatusCheckPage = () => {
                 type="text"
                 placeholder="ADA/INT/R/2026/0001"
                 value={appNo}
-                onChange={(e) => setAppNo(e.target.value)}
+                onChange={(e) => setAppNo(e.target.value.toUpperCase())}
                 required
-                className="field field-normal uppercase"
+                className="field font-mono"
               />
             </div>
 
             <div>
-              <label className="label">Date of Birth (as in official record)</label>
+              <label className="label">Date of Birth</label>
               <input
                 type="date"
+                max={new Date().toISOString().slice(0, 10)}
                 value={dob}
                 onChange={(e) => setDob(e.target.value)}
                 required
@@ -71,58 +84,77 @@ export const StatusCheckPage = () => {
               />
             </div>
 
-            <button type="submit" disabled={statusQuery.isLoading} className="btn mt-2">
-              {statusQuery.isLoading ? 'Checking...' : 'Check Status'}
+            <button
+              type="submit"
+              disabled={statusQuery.isFetching}
+              className="btn mt-2"
+            >
+              {statusQuery.isFetching ? 'Querying Database…' : 'Search Dossier Status →'}
             </button>
           </form>
 
-          {statusQuery.isError && (
-            <div className="mt-6 rounded-md bg-rose-50 border border-rose-200 p-3 text-xs text-rose-700">
-              {statusQuery.error instanceof ApiError
-                ? statusQuery.error.message
-                : 'No record found matching the provided application number and date of birth.'}
+          {statusQuery.isLoading && (
+            <div className="mt-6 text-center text-xs font-mono text-blue-600 animate-pulse">
+              [Fetching application records]...
             </div>
           )}
 
-          {statusQuery.data && (
-            <div className="mt-6 border-t border-slate-200 pt-5 space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-slate-500">Processing Stage</span>
-                <span className="chip border-teal-600/30 bg-teal-50 text-teal-700 font-bold">
+          {statusQuery.isError && (
+            <div role="alert" className="mt-6 rounded-lg border border-red-200 bg-red-50 p-4 text-xs text-red-800 space-y-2">
+              <p className="font-mono font-bold">
+                [LOOKUP_ERROR]: {(statusQuery.error as ApiError).message || 'No matching application record found.'}
+              </p>
+              {(statusQuery.error as ApiError).code === 'APPLICATION_NOT_FOUND' ? (
+                <p className="leading-relaxed text-red-700">
+                  An application number is issued only when you submit. If you have not submitted yet,
+                  open{' '}
+                  <Link to="/application" className="underline font-semibold">
+                    My Application
+                  </Link>{' '}
+                  and sign in with your registered email. If you have submitted, copy the number
+                  exactly as printed (for example ADA/INT/R/2026/0001) and use the same date of birth
+                  you entered in the form.
+                </p>
+              ) : (
+                <p className="leading-relaxed text-red-700">
+                  The lookup could not be completed just now. Please try again in a moment.
+                </p>
+              )}
+            </div>
+          )}
+
+          {statusQuery.isSuccess && statusQuery.data && (
+            <div className="mt-8 rounded-lg border border-blue-200 bg-blue-50/50 p-5 space-y-3 font-mono text-xs text-slate-800">
+              <div className="flex justify-between items-center border-b border-blue-100 pb-2">
+                <span className="text-slate-500">APPLICATION NO:</span>
+                <span className="font-bold text-slate-900">{statusQuery.data.applicationNo}</span>
+              </div>
+              <div className="flex justify-between items-center border-b border-blue-100 pb-2">
+                <span className="text-slate-500">CANDIDATE:</span>
+                <span className="font-bold text-slate-900">{statusQuery.data.candidateName}</span>
+              </div>
+              <div className="flex justify-between items-center border-b border-blue-100 pb-2">
+                <span className="text-slate-500">LAB / DIVISION:</span>
+                <span className="font-bold text-slate-900">{statusQuery.data.lab}</span>
+              </div>
+              <div className="flex justify-between items-center border-b border-blue-100 pb-2">
+                <span className="text-slate-500">LEVEL:</span>
+                <span className="font-bold text-slate-900">{statusQuery.data.level}</span>
+              </div>
+              <div className="flex justify-between items-center pt-1">
+                <span className="text-slate-500">STAGE STATUS:</span>
+                <span className="font-bold text-blue-700 uppercase tracking-wider">
                   {statusQuery.data.status}
                 </span>
               </div>
-
-              <dl className="divide-y divide-slate-100 text-xs">
-                <div className="py-2 flex justify-between">
-                  <dt className="text-slate-500">Applicant Name</dt>
-                  <dd className="font-medium text-slate-900">{statusQuery.data.candidateName}</dd>
-                </div>
-                <div className="py-2 flex justify-between">
-                  <dt className="text-slate-500">Application No</dt>
-                  <dd className="font-mono font-medium text-slate-900">{statusQuery.data.applicationNo}</dd>
-                </div>
-                <div className="py-2 flex justify-between">
-                  <dt className="text-slate-500">Category & Level</dt>
-                  <dd className="font-medium text-slate-900">{statusQuery.data.level}</dd>
-                </div>
-                <div className="py-2 flex justify-between">
-                  <dt className="text-slate-500">Referring Establishment</dt>
-                  <dd className="font-medium text-slate-900">{statusQuery.data.lab}</dd>
-                </div>
-                {statusQuery.data.submittedAt && (
-                  <div className="py-2 flex justify-between">
-                    <dt className="text-slate-500">Submission Date</dt>
-                    <dd className="text-slate-900">
-                      {new Date(statusQuery.data.submittedAt).toLocaleDateString()}
-                    </dd>
-                  </div>
-                )}
-              </dl>
             </div>
           )}
         </div>
       </main>
+
+      <footer className="border-t border-slate-200 bg-white py-6 text-center text-xs text-slate-500">
+        Aeronautical Development Agency · P.B. No. 1718, Vimanapura Post, Bengaluru 560017
+      </footer>
     </div>
   );
 };

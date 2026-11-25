@@ -42,15 +42,26 @@ export const VerifyCertificatePage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col">
+    <div className="min-h-screen blueprint-bg text-slate-800 flex flex-col font-sans">
+      {/* Top classification header */}
+      <div className="border-b border-slate-200 bg-slate-900 text-slate-300 text-[11px] py-2 px-6">
+        <div className="mx-auto max-w-6xl flex items-center justify-between">
+          <span className="font-medium text-slate-300">CRYPTOGRAPHIC VERIFICATION REGISTRY</span>
+          <span className="font-mono text-[10px] text-slate-400">DEFENCE RESEARCH DIRECTIVE</span>
+        </div>
+      </div>
+
       <Navbar />
 
       <main className="mx-auto max-w-xl flex-1 px-6 py-12 w-full space-y-6">
-        <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
           <div className="text-center">
-            <h1 className="text-xl font-bold text-navy-950">Public Certificate Verification</h1>
-            <p className="mt-1 text-xs text-slate-500">
-              Verify the authenticity of an ADA Internship / Project Training Certificate
+            <span className="text-[10px] font-mono tracking-[0.25em] uppercase text-blue-700 font-bold block mb-1">
+              // CREDENTIAL INTEGRITY
+            </span>
+            <h1 className="text-2xl font-bold text-slate-900">Public Certificate Verification</h1>
+            <p className="mt-2 text-xs text-slate-500">
+              Verify the digital authenticity and cryptographic checksum of an official ADA Training Certificate.
             </p>
           </div>
 
@@ -59,90 +70,70 @@ export const VerifyCertificatePage = () => {
               <label className="label">Certificate Serial Number</label>
               <input
                 type="text"
-                placeholder="ADA/CERT/2026/0001"
+                placeholder="ADA-CERT-2026-0001"
                 value={serialNo}
-                onChange={(e) => setSerialNo(e.target.value)}
+                onChange={(e) => setSerialNo(e.target.value.toUpperCase())}
                 required
-                className="field field-normal uppercase font-mono"
+                className="field font-mono"
               />
             </div>
 
-            <button type="submit" disabled={certQuery.isLoading} className="btn mt-2">
-              {certQuery.isLoading ? 'Verifying...' : 'Verify Authenticity'}
+            <button
+              type="submit"
+              disabled={certQuery.isFetching}
+              className="btn mt-2"
+            >
+              {certQuery.isFetching ? 'Verifying Signature…' : 'Validate Certificate →'}
             </button>
           </form>
 
-          {certQuery.isError && (
-            <div className="mt-6 rounded-md bg-rose-50 border border-rose-200 p-3 text-xs text-rose-700">
-              {certQuery.error instanceof ApiError
-                ? certQuery.error.message
-                : 'Certificate record not found or could not be verified.'}
+          {certQuery.isLoading && (
+            <div className="mt-6 text-center text-xs font-mono text-blue-600 animate-pulse">
+              [Checking cryptographic registry]...
             </div>
           )}
 
-          {certQuery.data && (
-            <div className="mt-6 rounded-lg border-2 border-emerald-600/30 bg-emerald-50/20 p-5 space-y-4">
-              <div className="flex items-center gap-2 text-emerald-800">
-                <svg className="w-5 h-5 text-emerald-600" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                </svg>
-                <span className="text-xs font-bold uppercase tracking-wider">Officially Verified Certificate</span>
-              </div>
+          {certQuery.isError && (
+            <div className="mt-6 rounded-lg border border-red-200 bg-red-50 p-4 text-xs font-mono text-red-700">
+              [VERIFICATION_FAILED]: {(certQuery.error as ApiError).message || 'Certificate serial number not recognized.'}
+            </div>
+          )}
 
-              <div className="border-t border-emerald-600/20 pt-3">
-                <dl className="divide-y divide-emerald-600/10 text-xs">
-                  <div className="py-2 flex justify-between">
-                    <dt className="text-slate-500">Certificate Serial</dt>
-                    <dd className="font-mono font-bold text-navy-950">{certQuery.data.serialNo}</dd>
-                  </div>
-                  <div className="py-2 flex justify-between">
-                    <dt className="text-slate-500">Trainee Name</dt>
-                    <dd className="font-semibold text-navy-950">{certQuery.data.traineeName}</dd>
-                  </div>
-                  <div className="py-2 flex justify-between">
-                    <dt className="text-slate-500">Programme & Discipline</dt>
-                    <dd className="text-slate-800">{certQuery.data.degree} · {certQuery.data.discipline}</dd>
-                  </div>
-                  <div className="py-2 flex justify-between">
-                    <dt className="text-slate-500">Project / Training Topic</dt>
-                    <dd className="font-medium text-navy-950 text-right max-w-[240px]">{certQuery.data.topic}</dd>
-                  </div>
-                  <div className="py-2 flex justify-between">
-                    <dt className="text-slate-500">Sponsoring Lab</dt>
-                    <dd className="text-slate-800">{certQuery.data.lab}</dd>
-                  </div>
-                  <div className="py-2 flex justify-between">
-                    <dt className="text-slate-500">Training Tenure</dt>
-                    <dd className="text-slate-800">
-                      {certQuery.data.startDate ? new Date(certQuery.data.startDate).toLocaleDateString() : '—'} to{' '}
-                      {certQuery.data.endDate ? new Date(certQuery.data.endDate).toLocaleDateString() : '—'}
-                    </dd>
-                  </div>
-                  <div className="py-2 flex justify-between">
-                    <dt className="text-slate-500">Issue Date</dt>
-                    <dd className="text-slate-800">{new Date(certQuery.data.issuedAt).toLocaleDateString()}</dd>
-                  </div>
-                </dl>
+          {certQuery.isSuccess && certQuery.data && (
+            <div className="mt-8 rounded-lg border border-emerald-300 bg-emerald-50/50 p-5 space-y-3 font-mono text-xs text-slate-800">
+              <div className="flex items-center gap-2 text-emerald-700 font-bold uppercase tracking-wider text-[11px] pb-2 border-b border-emerald-200">
+                <span>✓</span> Official ADA Certificate Validated
               </div>
-
-              <div className="pt-2">
-                <a
-                  href={`/api/public/info/certificates/${encodeURIComponent(certQuery.data.serialNo)}/pdf`}
-                  download={`ADA-Certificate-${certQuery.data.serialNo.replace(/[/\\?%*:|"<>]/g, '_')}.pdf`}
-                  className="w-full inline-flex items-center justify-center gap-2 rounded-md bg-teal-700 px-4 py-2 text-xs font-bold text-white hover:bg-teal-800 transition"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                  </svg>
-                  Download Official Certificate (PDF)
-                </a>
+              <div className="flex justify-between border-b border-emerald-100 pb-2">
+                <span className="text-slate-500">SERIAL NO:</span>
+                <span className="font-bold text-slate-900">{certQuery.data.serialNo}</span>
+              </div>
+              <div className="flex justify-between border-b border-emerald-100 pb-2">
+                <span className="text-slate-500">RECIPIENT:</span>
+                <span className="font-bold text-slate-900">{certQuery.data.traineeName}</span>
+              </div>
+              <div className="flex justify-between border-b border-emerald-100 pb-2">
+                <span className="text-slate-500">LABORATORY:</span>
+                <span className="font-bold text-slate-900">{certQuery.data.lab}</span>
+              </div>
+              {certQuery.data.topic && (
+                <div className="flex justify-between border-b border-emerald-100 pb-2">
+                  <span className="text-slate-500">TOPIC:</span>
+                  <span className="font-bold text-slate-900 text-right max-w-[240px]">{certQuery.data.topic}</span>
+                </div>
+              )}
+              <div className="flex justify-between pt-1">
+                <span className="text-slate-500">ISSUED DATE:</span>
+                <span className="font-bold text-blue-700">
+                  {new Date(certQuery.data.issuedAt).toLocaleDateString()}
+                </span>
               </div>
             </div>
           )}
         </div>
       </main>
 
-      <footer className="border-t border-slate-200 bg-white py-4 text-center text-xs text-slate-500">
+      <footer className="border-t border-slate-200 bg-white py-6 text-center text-xs text-slate-500">
         Aeronautical Development Agency · P.B. No. 1718, Vimanapura Post, Bengaluru 560017
       </footer>
     </div>

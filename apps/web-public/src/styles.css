@@ -2,48 +2,113 @@
 
 @theme {
   --color-navy-950: #0b1a2f;
-  --color-navy-900: #11294a;
-  --color-navy-700: #1d3f63;
-  --color-teal-600: #0f766e;
-  --color-teal-500: #14867c;
-  --font-sans: 'Inter', 'Segoe UI', system-ui, sans-serif;
+  --color-navy-900: #0f172a;
+  --color-navy-800: #1e293b;
+  --color-navy-700: #334155;
+  --color-aerospace-blue: #1d4ed8;
+  --color-aerospace-blue-hover: #1e40af;
+  --color-aerospace-sky: #0284c7;
+  --color-gold-accent: #b45309;
+  --color-gold-light: #fef3c7;
+  --font-sans: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-serif: 'Cinzel', 'Playfair Display', Georgia, serif;
 }
 
 html,
 body,
 #root {
-  height: 100%;
+  min-height: 100%;
 }
 
 body {
   margin: 0;
-  background: #f6f8fa;
-  color: var(--color-navy-950);
+  background-color: #f8fafc;
+  color: #0f172a;
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
 }
 
+.serif-heading {
+  font-family: var(--font-serif);
+  letter-spacing: -0.01em;
+}
+
+/* Light, clean blueprint grid */
+.blueprint-bg {
+  background-color: #f8fafc;
+  background-image: 
+    radial-gradient(circle at 50% 0%, rgba(224, 238, 255, 0.6) 0%, rgba(248, 250, 252, 0.95) 75%),
+    linear-gradient(to right, rgba(148, 163, 184, 0.08) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(148, 163, 184, 0.08) 1px, transparent 1px);
+  background-size: 100% 100%, 36px 36px, 36px 36px;
+}
+
+.blueprint-grid-overlay {
+  background-image: 
+    linear-gradient(to right, rgba(148, 163, 184, 0.07) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(148, 163, 184, 0.07) 1px, transparent 1px);
+  background-size: 36px 36px;
+}
+
+/* Clean, crisp cards */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.05);
+}
+
+.glass-panel-subtle {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+}
+
+/* Tactical Corner Accent Brackets for buttons and cards */
+.tech-border {
+  position: relative;
+}
+
+.tech-border::before {
+  content: '';
+  position: absolute;
+  top: -2px; left: -2px; width: 8px; height: 8px;
+  border-top: 2px solid #1d4ed8;
+  border-left: 2px solid #1d4ed8;
+  pointer-events: none;
+}
+
+.tech-border::after {
+  content: '';
+  position: absolute;
+  bottom: -2px; right: -2px; width: 8px; height: 8px;
+  border-bottom: 2px solid #1d4ed8;
+  border-right: 2px solid #1d4ed8;
+  pointer-events: none;
+}
+
+/* Form inputs & buttons with clean, high-contrast light styling */
 .field {
-  @apply w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 text-sm uppercase tracking-[0.12em] text-slate-900 outline-none transition;
+  @apply w-full rounded-md border border-slate-300 bg-white px-3.5 py-2.5 text-sm uppercase tracking-[0.14em] text-slate-900 outline-none transition shadow-2xs;
 }
 .field-normal {
   @apply normal-case tracking-normal;
 }
 .field:focus {
-  @apply border-teal-600 ring-2 ring-teal-600/20;
+  @apply border-blue-600 ring-2 ring-blue-600/20 bg-white;
 }
 .btn {
-  @apply inline-flex w-full items-center justify-center gap-2 rounded-md bg-teal-600 px-4 py-2.5 text-sm font-semibold text-white transition;
+  @apply inline-flex w-full items-center justify-center gap-2 rounded-md bg-blue-600 px-5 py-2.5 text-xs font-bold uppercase tracking-[0.18em] text-white shadow-sm transition;
 }
 .btn:hover {
-  @apply bg-teal-500;
+  @apply bg-blue-700 shadow-md;
 }
 .btn:disabled {
   @apply cursor-not-allowed opacity-60;
 }
 .label {
-  @apply mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500;
+  @apply mb-1.5 block text-[11px] font-bold uppercase tracking-[0.16em] text-slate-600;
 }
 .chip {
-  @apply inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-semibold;
+  @apply inline-flex items-center rounded-full border border-blue-200 px-2.5 py-0.5 text-[10px] font-semibold tracking-wider uppercase text-blue-700 bg-blue-50;
 }

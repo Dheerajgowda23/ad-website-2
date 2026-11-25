@@ -71,7 +71,7 @@ export const publicInfoRouter = (deps: AppDeps): Router => {
       const pdfBytes = await generateCertificatePdf({
         serialNo: result.serialNo,
         traineeName: result.traineeName ?? 'Trainee',
-        collegeName: 'Accredited Institution',
+        collegeName: certRecord?.application.student.collegeName || 'Accredited Institution',
         degree: result.degree ?? 'Degree',
         discipline: result.discipline ?? 'Engineering',
         topic: result.topic ?? 'Project Work',

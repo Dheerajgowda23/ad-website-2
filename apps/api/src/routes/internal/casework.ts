@@ -321,7 +321,7 @@ export const caseworkRouter = (deps: AppDeps): Router => {
         dob: app.student.dob ? app.student.dob.toISOString().slice(0, 10) : '',
         nationality: app.student.nationality,
         aadhaarMasked: maskAadhaar(app.student.aadhaarLast4),
-        collegeName: 'Accredited Institution',
+        collegeName: app.student.collegeName || 'Accredited Institution',
         degree: app.degree || '',
         discipline: app.discipline || '',
         semester: app.semester || 0,
@@ -360,7 +360,7 @@ export const caseworkRouter = (deps: AppDeps): Router => {
       const pdfBytes = await generateOfferLetterPdf({
         applicationNo: app.applicationNo || app.id,
         studentName: app.student.fullName,
-        collegeName: 'Accredited Institution',
+        collegeName: app.student.collegeName || 'Accredited Institution',
         degree: app.degree || 'Degree',
         discipline: app.discipline || 'Engineering',
         level: app.level,
@@ -395,7 +395,7 @@ export const caseworkRouter = (deps: AppDeps): Router => {
       const pdfBytes = await generateCertificatePdf({
         serialNo: app.certificate.serialNo,
         traineeName: app.student.fullName,
-        collegeName: 'Accredited Institution',
+        collegeName: app.student.collegeName || 'Accredited Institution',
         degree: app.degree || 'Degree',
         discipline: app.discipline || 'Engineering',
         topic: app.topic,

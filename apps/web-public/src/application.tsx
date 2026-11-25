@@ -24,6 +24,11 @@ interface DetailedApplicationView {
     altPhone: string | null;
     permanentAddress: string | null;
     localAddress: string | null;
+    collegeName: string | null;
+    universityName: string | null;
+    rollNumber: string | null;
+    collegeAddress: string | null;
+    category: string | null;
     aadhaarLast4: string | null;
     aadhaarMasked: string;
   };
@@ -95,6 +100,7 @@ export const ApplicationPage = () => {
   const [activeTab, setActiveTab] = useState<'personal' | 'academic' | 'project' | 'docs' | 'review'>('personal');
   const [isEditing, setIsEditing] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [saveNotice, setSaveNotice] = useState<string | null>(null);
 
   // Form states
   const [formData, setFormData] = useState({
@@ -108,6 +114,11 @@ export const ApplicationPage = () => {
     altPhone: '',
     permanentAddress: '',
     localAddress: '',
+    collegeName: '',
+    universityName: '',
+    rollNumber: '',
+    collegeAddress: '',
+    category: 'GENERAL',
     discipline: '',
     branchCode: '',
     degree: 'B.Tech',
@@ -149,6 +160,11 @@ export const ApplicationPage = () => {
         altPhone: app.student.altPhone ?? '',
         permanentAddress: app.student.permanentAddress ?? '',
         localAddress: app.student.localAddress ?? '',
+        collegeName: app.student.collegeName ?? '',
+        universityName: app.student.universityName ?? '',
+        rollNumber: app.student.rollNumber ?? '',
+        collegeAddress: app.student.collegeAddress ?? '',
+        category: app.student.category ?? 'GENERAL',
         discipline: app.academic.discipline ?? '',
         branchCode: app.academic.branchCode ?? '',
         degree: app.academic.degree ?? (app.level === 'UG' ? 'B.Tech' : 'M.Tech'),
@@ -167,15 +183,27 @@ export const ApplicationPage = () => {
   }, [app]);
 
   // Mutations
+  // Empty strings are not valid phone/dob/aadhaar values for the draft schema,
+  // so a half-filled step is saved as nulls instead of failing validation.
+  const draftPayload = (data: typeof formData) => ({
+    ...data,
+    dob: data.dob || null,
+    aadhaarLast4: data.aadhaarLast4 || null,
+    phone: data.phone || null,
+    altPhone: data.altPhone || null,
+    startDate: data.startDate || null,
+    endDate: data.endDate || null,
+  });
+
   const saveDraftMutation = useMutation({
-    mutationFn: (data: any) =>
+    mutationFn: (data: typeof formData) =>
       api('/api/public/application/draft', {
         method: 'PUT',
-        body: JSON.stringify(data),
+        body: JSON.stringify(draftPayload(data)),
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['application'] });
-      alert('Draft saved successfully');
+      setSaveNotice('Draft saved');
     },
     onError: (err: any) => setFormError(err.message),
   });
@@ -264,6 +292,39 @@ export const ApplicationPage = () => {
   };
 
   const wordCount = formData.synopsis.trim() ? formData.synopsis.trim().split(/\s+/).length : 0;
+
+  // Step navigation: every move forward saves the packet first, so no screen
+  // silently loses what was typed on it.
+  const steps = ['personal', 'academic', 'project', 'docs', 'review'] as const;
+  const stepIndex = steps.indexOf(activeTab);
+
+  const goToStep = (index: number) => {
+    setFormError(null);
+    setSaveNotice(null);
+    setActiveTab(steps[Math.max(0, Math.min(steps.length - 1, index))] ?? 'personal');
+  };
+
+  const saveAndNext = async () => {
+    try {
+      await saveDraftMutation.mutateAsync(formData);
+      goToStep(stepIndex + 1);
+    } catch {
+      // Save failed; formError is already populated by the mutation.
+    }
+  };
+
+  // Dates: the end date follows the start date plus the chosen duration, and a
+  // start date in the past is not allowed.
+  const addWeeks = (iso: string, weeks: number) => {
+    if (!iso) return '';
+    const date = new Date(`${iso}T00:00:00`);
+    date.setDate(date.getDate() + weeks * 7);
+    return date.toISOString().slice(0, 10);
+  };
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const dateRangeInvalid = Boolean(
+    formData.startDate && formData.endDate && formData.endDate <= formData.startDate,
+  );
 
   if (appQuery.isLoading) {
     return (
@@ -608,6 +669,77 @@ export const ApplicationPage = () => {
             {/* Tab 2: Academic Details */}
             {activeTab === 'academic' && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                <div className="md:col-span-2 border-b border-slate-100 pb-1">
+                  <h4 className="font-bold text-navy-950 uppercase tracking-wide">
+                    College / Institution
+                  </h4>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    Printed on your recommendation letter, offer letter and certificate.
+                  </p>
+                </div>
+                <div className="md:col-span-2">
+                  <label className="label">College / Institution Name (as on letterhead)</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. BMS College of Engineering, Bengaluru"
+                    value={formData.collegeName}
+                    onChange={(e) => setFormData({ ...formData, collegeName: e.target.value })}
+                    required
+                    className="field field-normal"
+                  />
+                </div>
+                <div>
+                  <label className="label">University / Board</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Visvesvaraya Technological University"
+                    value={formData.universityName}
+                    onChange={(e) => setFormData({ ...formData, universityName: e.target.value })}
+                    required
+                    className="field field-normal"
+                  />
+                </div>
+                <div>
+                  <label className="label">University Roll / Enrolment Number</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 1BM21AE045"
+                    value={formData.rollNumber}
+                    onChange={(e) => setFormData({ ...formData, rollNumber: e.target.value.toUpperCase() })}
+                    required
+                    className="field field-normal font-mono uppercase"
+                  />
+                </div>
+                <div>
+                  <label className="label">Category</label>
+                  <select
+                    value={formData.category}
+                    onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                    required
+                    className="field field-normal"
+                  >
+                    <option value="GENERAL">General</option>
+                    <option value="EWS">EWS</option>
+                    <option value="OBC">OBC</option>
+                    <option value="SC">SC</option>
+                    <option value="ST">ST</option>
+                  </select>
+                </div>
+                <div className="md:col-span-2">
+                  <label className="label">College Address (with PIN)</label>
+                  <textarea
+                    rows={2}
+                    placeholder="Department, college, place, PIN"
+                    value={formData.collegeAddress}
+                    onChange={(e) => setFormData({ ...formData, collegeAddress: e.target.value })}
+                    required
+                    className="field field-normal"
+                  />
+                </div>
+
+                <div className="md:col-span-2 border-b border-slate-100 pb-1 pt-2">
+                  <h4 className="font-bold text-navy-950 uppercase tracking-wide">Course Details</h4>
+                </div>
                 <div>
                   <label className="label">Discipline / Branch Name</label>
                   <input
@@ -689,21 +821,43 @@ export const ApplicationPage = () => {
                     <label className="label">Duration (in Weeks)</label>
                     <input
                       type="number"
-                      min="4"
-                      max="52"
+                      min={app.level === 'PG' ? 24 : 12}
+                      max={app.level === 'PG' ? 52 : 20}
                       value={formData.durationWeeks}
-                      onChange={(e) => setFormData({ ...formData, durationWeeks: parseInt(e.target.value) || 0 })}
+                      onChange={(e) => {
+                        const durationWeeks = parseInt(e.target.value) || 0;
+                        setFormData({
+                          ...formData,
+                          durationWeeks,
+                          endDate:
+                            formData.startDate && durationWeeks > 0
+                              ? addWeeks(formData.startDate, durationWeeks)
+                              : formData.endDate,
+                        });
+                      }}
                       required
                       className="field field-normal font-mono"
                     />
-                    <p className="mt-1 text-[10px] text-slate-500">UG: 12-20 weeks · PG: 24-52 weeks</p>
+                    <p className="mt-1 text-[10px] text-slate-500">
+                      {app.level === 'PG' ? 'PG: 24-52 weeks (6-12 months)' : 'UG: 12-20 weeks'}
+                    </p>
                   </div>
                   <div>
                     <label className="label">Proposed Start Date</label>
                     <input
                       type="date"
+                      min={todayIso}
                       value={formData.startDate}
-                      onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
+                      onChange={(e) => {
+                        const startDate = e.target.value;
+                        setFormData({
+                          ...formData,
+                          startDate,
+                          endDate: startDate
+                            ? addWeeks(startDate, formData.durationWeeks)
+                            : formData.endDate,
+                        });
+                      }}
                       required
                       className="field field-normal"
                     />
@@ -712,6 +866,7 @@ export const ApplicationPage = () => {
                     <label className="label">Proposed End Date</label>
                     <input
                       type="date"
+                      min={formData.startDate || todayIso}
                       value={formData.endDate}
                       onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
                       required
@@ -719,6 +874,11 @@ export const ApplicationPage = () => {
                     />
                   </div>
                 </div>
+                <p className={`text-[11px] ${dateRangeInvalid ? 'text-rose-600 font-semibold' : 'text-slate-500'}`}>
+                  {dateRangeInvalid
+                    ? 'The end date must fall after the start date.'
+                    : 'The end date is filled in automatically from the start date and duration; adjust it only if your college has fixed dates.'}
+                </p>
 
                 <div>
                   <label className="label">Project Title / Topic</label>
@@ -846,7 +1006,8 @@ export const ApplicationPage = () => {
                 <div className="rounded-md border border-slate-200 bg-slate-50 p-4 space-y-2">
                   <h4 className="font-bold text-navy-950 uppercase tracking-wide">Review Submission Summary</h4>
                   <p><strong>Candidate:</strong> {formData.fullName} ({formData.gender}, {formData.dob})</p>
-                  <p><strong>Academic:</strong> {formData.degree} in {formData.discipline} · CGPA: {formData.cgpa}</p>
+                  <p><strong>College:</strong> {formData.collegeName} · {formData.universityName} · Roll {formData.rollNumber}</p>
+                  <p><strong>Academic:</strong> {formData.degree} in {formData.discipline} ({formData.semester}) · CGPA: {formData.cgpa} · Category: {formData.category}</p>
                   <p><strong>Internship:</strong> {formData.topic} ({formData.durationWeeks} weeks, {formData.startDate} to {formData.endDate})</p>
                   <p><strong>College Letter:</strong> {app.documents.some(d => d.kind === 'COLLEGE_LETTER') ? 'Uploaded' : 'MISSING'}</p>
                 </div>
@@ -866,15 +1027,10 @@ export const ApplicationPage = () => {
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between pt-4 border-t border-slate-200">
-                  <button
-                    type="button"
-                    onClick={() => saveDraftMutation.mutate(formData)}
-                    disabled={saveDraftMutation.isPending}
-                    className="rounded-md border border-slate-300 bg-white px-4 py-2 font-semibold text-slate-700 hover:bg-slate-50"
-                  >
-                    Save Draft
-                  </button>
+                <div className="flex items-center justify-between gap-3 pt-4 border-t border-slate-200">
+                  <span className="text-[11px] text-slate-500">
+                    Save Draft below keeps your work; nothing is submitted until you press Submit.
+                  </span>
 
                   {app.status === 'SUBMITTED' ? (
                     <button
@@ -889,7 +1045,12 @@ export const ApplicationPage = () => {
                     <button
                       type="button"
                       onClick={() => submitMutation.mutate(formData)}
-                      disabled={submitMutation.isPending || !formData.declarationSigned || wordCount > 150}
+                      disabled={
+                        submitMutation.isPending ||
+                        !formData.declarationSigned ||
+                        wordCount > 150 ||
+                        dateRangeInvalid
+                      }
                       className="rounded-md bg-teal-600 px-6 py-2 font-bold text-white hover:bg-teal-500 disabled:opacity-50"
                     >
                       {submitMutation.isPending ? 'Submitting...' : 'Submit Application'}
@@ -898,6 +1059,44 @@ export const ApplicationPage = () => {
                 </div>
               </div>
             )}
+
+            {/* Step controls: Back, Save Draft, Save & Next */}
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-4">
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => goToStep(stepIndex - 1)}
+                  disabled={stepIndex === 0}
+                  className="rounded-md border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40"
+                >
+                  ← Back
+                </button>
+                <button
+                  type="button"
+                  onClick={() => saveDraftMutation.mutate(formData)}
+                  disabled={saveDraftMutation.isPending}
+                  className="rounded-md border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                >
+                  {saveDraftMutation.isPending ? 'Saving…' : 'Save Draft'}
+                </button>
+                {saveNotice && (
+                  <span role="status" className="text-[11px] font-semibold text-emerald-700">
+                    ✓ {saveNotice}
+                  </span>
+                )}
+              </div>
+
+              {stepIndex < steps.length - 1 && (
+                <button
+                  type="button"
+                  onClick={saveAndNext}
+                  disabled={saveDraftMutation.isPending}
+                  className="rounded-md bg-teal-600 px-5 py-2 text-xs font-bold text-white hover:bg-teal-500 disabled:opacity-50"
+                >
+                  Save &amp; Next →
+                </button>
+              )}
+            </div>
           </div>
         ) : (
           /* View Mode */
@@ -934,6 +1133,9 @@ export const ApplicationPage = () => {
                 <div>
                   <h3 className="font-bold text-slate-900 uppercase tracking-wider mb-2">Academic & Training Details</h3>
                   <dl className="divide-y divide-slate-100">
+                    <div className="py-1.5 flex justify-between"><dt className="text-slate-500">College</dt><dd className="text-right text-slate-900 max-w-[220px]">{app.student.collegeName ?? '—'}</dd></div>
+                    <div className="py-1.5 flex justify-between"><dt className="text-slate-500">University / Roll No</dt><dd className="text-right text-slate-900 max-w-[220px]">{app.student.universityName ?? '—'} · {app.student.rollNumber ?? '—'}</dd></div>
+                    <div className="py-1.5 flex justify-between"><dt className="text-slate-500">Category</dt><dd className="text-slate-900">{app.student.category ?? '—'}</dd></div>
                     <div className="py-1.5 flex justify-between"><dt className="text-slate-500">Degree & Discipline</dt><dd className="text-slate-900">{app.academic.degree} · {app.academic.discipline}</dd></div>
                     <div className="py-1.5 flex justify-between"><dt className="text-slate-500">CGPA</dt><dd className="font-mono font-bold text-slate-900">{app.academic.cgpa}</dd></div>
                     <div className="py-1.5 flex justify-between"><dt className="text-slate-500">Duration</dt><dd className="text-slate-900">{app.project.durationWeeks} Weeks</dd></div>
