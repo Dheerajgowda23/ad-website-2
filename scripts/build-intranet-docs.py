@@ -16,7 +16,7 @@ OUT = os.path.join(ROOT, "intranet-bundle", "docs")
 TITLE = "ADA Internship & Project Work Portal"
 SUBTITLE = "Offline Intranet Installation and Operations Guide"
 VERSION = "Version 1.0 - pilot installation"
-DATE = "24 November 2026"
+DATE = "25 November 2026"
 
 # --------------------------------------------------------------------------
 # Content. Blocks: h1/h2/h3/p/bullet/numbered/code/table/note/pagebreak
@@ -272,6 +272,9 @@ CONTENT = [
     ("p", "Rehearse a restore before go-live, on a test machine or after taking a fresh backup. A backup that "
           "has never been restored is not a backup. The restore script asks you to type RESTORE before it "
           "touches anything."),
+    ("p", "Documents are encrypted at rest with FILE_ENCRYPTION_KEY (or SESSION_SECRET if that key is unset). "
+          "The .env in the backup holds it: restore the database and the files without that exact value and "
+          "every document is unreadable ciphertext. Treat the .env as part of the data, not as configuration."),
     ("h2", "9.2 Upgrading to a newer build"),
     ("number", [
         "Take a backup.",
@@ -294,6 +297,8 @@ CONTENT = [
         ["POSTGRES_*", "Database name, owner and passwords. Generated at install; keep them."],
         ["PORTAL_PUBLIC_DB_PASSWORD / PORTAL_INTERNAL_DB_PASSWORD", "Passwords for the two restricted database roles."],
         ["SESSION_SECRET, OTP_PEPPER, REFERRAL_HMAC_PEPPER, TOTP_PEPPER", "Signing and hashing secrets. Changing them invalidates sessions, pending OTPs and referral lookups."],
+        ["FILE_ENCRYPTION_KEY", "Key that encrypts uploaded documents at rest (AES-256-GCM). Defaults to SESSION_SECRET on a pilot install; set it explicitly and keep it with the backups, or a restored database cannot decrypt a single document."],
+        ["COMMITTEE_QUORUM", "Committee reviews required before a packet leaves committee review. Default 2, capped by the members assigned to the batch."],
         ["SMTP_HOST / SMTP_PORT / SMTP_USER / SMTP_PASSWORD / SMTP_FROM", "Internal mail relay used for OTP and notification email."],
     ]),
     ("note", "If you edit .env after the database volume has been created, changing POSTGRES_PASSWORD will "

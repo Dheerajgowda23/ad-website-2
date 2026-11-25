@@ -8,6 +8,7 @@ import { pgSessionStore } from '../../src/lib/session.js';
 import { memoryFlagStore } from '../../src/store/flags.js';
 import { generateTotpSecret } from '../../src/lib/crypto.js';
 import { totpAt } from '../../src/lib/totp.js';
+import { createReferralCode } from '../../src/services/referral.service.js';
 
 const ownerUrl = process.env.MIGRATION_DATABASE_URL;
 const publicUrl = process.env.DATABASE_URL_PUBLIC;
@@ -274,6 +275,65 @@ describe('Full End-to-End Workflow & Milestone Verification', () => {
     expect(listRes.body.referrals[0].state).toBe('ACTIVE');
   });
 
+  it('M11: an unverified DRDO sponsor code is inert until Admin & HR verifies', async () => {
+    const otherLab = await owner.lab.create({
+      data: {
+        code: `DR${suffix.slice(0, 3).replace(/[0-9]/g, 'Z').toUpperCase()}`,
+        name: 'Other DRDO Lab',
+        type: 'DRDO_OTHER',
+      },
+    });
+
+    const sponsorEmail = `external-${suffix}@drdo.example.in`;
+    const created = await adminHrAgent
+      .post('/api/staff/users')
+      .send({
+        name: 'External Sponsor',
+        email: sponsorEmail,
+        role: 'SPONSOR',
+        employeeCode: `EXT-${suffix}`,
+        labId: otherLab.id,
+      })
+      .expect(201);
+
+    const sponsor = await owner.sponsor.findFirst({ where: { userId: created.body.user.id } });
+    expect(sponsor?.verificationStatus).toBe('PENDING');
+
+    const issued = await createReferralCode(
+      { prisma: owner, env: internalEnv },
+      {
+        userId: created.body.user.id,
+        level: 'UG',
+        studentName: 'Referred Student',
+        studentEmail: `referred-${suffix}@college.edu.in`,
+        ip: '127.0.0.1',
+      },
+    );
+
+    // Inert: same generic error as a bad code, so the queue leaks nothing.
+    const before = await request(publicApp)
+      .post('/api/public/auth/redeem')
+      .send({ code: issued.code });
+    expect([400, 401]).toContain(before.status);
+    expect(before.body.error.code).toBe('INVALID_CODE');
+
+    await adminHrAgent
+      .post(`/api/staff/users/sponsors/${sponsor!.id}/verify`)
+      .send({ decision: 'APPROVE' })
+      .expect(200);
+
+    await request(publicApp)
+      .post('/api/public/auth/redeem')
+      .send({ code: issued.code })
+      .expect(200);
+
+    await owner.referralCode.deleteMany({ where: { labId: otherLab.id } });
+    await owner.sponsor.deleteMany({ where: { labId: otherLab.id } });
+    await owner.user.delete({ where: { id: created.body.user.id } });
+    await owner.auditLog.deleteMany({ where: { actorId: created.body.user.id } });
+    await owner.lab.delete({ where: { id: otherLab.id } });
+  });
+
   it('M3: Student redeems referral code and signs in with email OTP', async () => {
     // 1. Redeem preview
     const redeemRes = await studentAgent
@@ -497,6 +557,47 @@ describe('Full End-to-End Workflow & Milestone Verification', () => {
       .expect(409);
 
     expect(conflictRes.body.error.code).toBe('REVISION_MISMATCH');
+  });
+
+  it('M9: an offer whose reporting date has passed is cancelled as a no-show', async () => {
+    const student = await owner.student.create({
+      data: { fullName: 'No Show Candidate', email: `noshow-${suffix}@college.edu.in`, intakeYear: 2026 },
+    });
+
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    const app = await owner.application.create({
+      data: {
+        labId,
+        studentId: student.id,
+        level: 'UG',
+        entryChannel: 'REFERRED',
+        intakeYear: 2026,
+        status: 'ACCEPTED',
+        offer: { create: { reportingDate: yesterday } },
+      },
+    });
+
+    const res = await adminHrAgent
+      .post('/api/staff/casework/maintenance/sweep-no-shows')
+      .expect(200);
+
+    expect(res.body.cancelled).toBeGreaterThanOrEqual(1);
+
+    const after = await owner.application.findUnique({ where: { id: app.id } });
+    expect(after?.status).toBe('CANCELLED');
+    expect(after?.cancellationReason).toContain('NO_SHOW');
+
+    const audit = await owner.auditLog.findFirst({
+      where: { entityId: app.id, action: 'SYSTEM_NO_SHOW_CANCELLED' },
+    });
+    expect(audit).not.toBeNull();
+
+    await owner.notification.deleteMany({ where: { applicationId: app.id } });
+    await owner.offer.deleteMany({ where: { applicationId: app.id } });
+    await owner.application.delete({ where: { id: app.id } });
+    await owner.student.delete({ where: { id: student.id } });
   });
 
   it('M5: Admin & HR verifies letter, starts screening (locking student edits)', async () => {

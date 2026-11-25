@@ -9,6 +9,7 @@ import { logger } from './lib/logger.js';
 import { prismaFlagStore } from './store/flags.js';
 import { processQueuedNotifications } from './services/notification.service.js';
 import { checkSecurityEvents } from './services/alert.service.js';
+import { sweepNoShows } from './services/casework.service.js';
 
 const env = loadEnv();
 const sessionStore = pgSessionStore(env.zone, env.DATABASE_URL, env);
@@ -69,6 +70,15 @@ if (env.zone === 'internal') {
   };
   check();
   setInterval(check, 5 * 60_000).unref();
+
+  // Reporting-date sweep: an offer whose reporting date has passed is a NO_SHOW.
+  const sweep = (): void => {
+    void sweepNoShows({ prisma }).catch((error: unknown) => {
+      logger.error({ err: error }, 'no-show sweep failed');
+    });
+  };
+  sweep();
+  setInterval(sweep, 60 * 60_000).unref();
 }
 
 const shutdown = async (signal: string): Promise<void> => {

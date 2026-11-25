@@ -7,6 +7,8 @@ import {
 } from '@ada/shared';
 import { ApiError, badRequest, conflict, forbidden, notFound } from '../lib/http.js';
 import { writeAudit } from '../lib/audit.js';
+import type { Env } from '../config/env.js';
+import { queueNotification } from './notification.service.js';
 
 export const listApplicationsForStaff = async (
   deps: { prisma: PrismaClient },
@@ -462,7 +464,7 @@ export const assignDirectorateAndCommittee = async (
 };
 
 export const submitCommitteeReview = async (
-  deps: { prisma: PrismaClient },
+  deps: { prisma: PrismaClient; env: Env },
   applicationId: string,
   committeeUserId: string,
   input: {
@@ -475,16 +477,27 @@ export const submitCommitteeReview = async (
   const user = await deps.prisma.user.findUnique({ where: { id: committeeUserId } });
   if (!user) throw notFound('USER_NOT_FOUND', 'User not found');
 
-  const app = await deps.prisma.application.findUnique({ where: { id: applicationId } });
+  const app = await deps.prisma.application.findUnique({
+    where: { id: applicationId },
+    include: { sponsor: true },
+  });
   if (!app) throw notFound('APPLICATION_NOT_FOUND', 'Application not found');
 
   if (app.status !== 'COMMITTEE_REVIEW') {
     throw badRequest('NOT_IN_REVIEW', `Application is in status ${app.status}, not in COMMITTEE_REVIEW`);
   }
 
+  // Handoff M2: a sponsor never sits on the committee for their own referral.
+  if (app.sponsor?.userId && app.sponsor.userId === user.id) {
+    throw forbidden(
+      'CONFLICT_OF_INTEREST',
+      'You sponsored this application and cannot review it.',
+    );
+  }
+
   const now = new Date();
 
-  await deps.prisma.$transaction(async (tx) => {
+  return deps.prisma.$transaction(async (tx) => {
     await tx.review.upsert({
       where: {
         applicationId_committeeMemberId: {
@@ -508,8 +521,51 @@ export const submitCommitteeReview = async (
       },
     });
 
-    // Advance to DIRECTOR_DECISION or NOT_RECOMMENDED if not recommended
-    const nextStatus = input.recommendation === 'NOT_RECOMMEND' ? 'NOT_RECOMMENDED' : 'DIRECTOR_DECISION';
+    // Quorum: the configured number of reviews, capped by the members actually
+    // assigned to this batch, so a one-member committee is never stuck.
+    const assigned = app.committeeBatchId
+      ? await tx.committeeAssignment.count({
+          where: { batchId: app.committeeBatchId, isActive: true },
+        })
+      : 0;
+    const quorum = Math.min(deps.env.COMMITTEE_QUORUM, Math.max(1, assigned));
+
+    const reviews = await tx.review.findMany({
+      where: { applicationId: app.id, submittedAt: { not: null } },
+      select: { recommendation: true },
+    });
+
+    if (reviews.length < quorum) {
+      await writeAudit(tx as unknown as PrismaClient, {
+        actorId: user.id,
+        actorRole: user.role,
+        action: 'COMMITTEE_REVIEWED',
+        entity: 'application',
+        entityId: app.id,
+        before: { status: 'COMMITTEE_REVIEW' },
+        after: {
+          status: 'COMMITTEE_REVIEW',
+          score: input.score,
+          recommendation: input.recommendation,
+          reviewsReceived: reviews.length,
+          quorum,
+        },
+        ip,
+        zone: 'internal',
+      });
+      return {
+        ok: true,
+        message: 'Review recorded',
+        quorumReached: false,
+        reviewsReceived: reviews.length,
+        quorum,
+      };
+    }
+
+    // Any member recommending rejection stops the packet; otherwise it goes up.
+    const nextStatus = reviews.some((r) => r.recommendation === 'NOT_RECOMMEND')
+      ? 'NOT_RECOMMENDED'
+      : 'DIRECTOR_DECISION';
 
     await tx.application.update({
       where: { id: app.id },
@@ -527,13 +583,22 @@ export const submitCommitteeReview = async (
         status: nextStatus,
         score: input.score,
         recommendation: input.recommendation,
+        reviewsReceived: reviews.length,
+        quorum,
       },
       ip,
       zone: 'internal',
     });
-  });
 
-  return { ok: true, message: 'Review recorded' };
+    return {
+      ok: true,
+      message: 'Review recorded',
+      quorumReached: true,
+      reviewsReceived: reviews.length,
+      quorum,
+      status: nextStatus,
+    };
+  });
 };
 
 export const directorDecision = async (
@@ -1026,4 +1091,62 @@ export const listAuditLogs = async (
   });
 
   return { logs };
+};
+
+/**
+ * Handoff §5: a reporting date that passes without the trainee turning up
+ * cancels the registration (NO_SHOW). Idempotent, so a timer can run it hourly.
+ */
+export const sweepNoShows = async (deps: { prisma: PrismaClient }) => {
+  // reportingDate is a DATE column and Prisma casts the bound to a UTC date,
+  // so build the cutoff from the local calendar date at UTC midnight.
+  const now = new Date();
+  const cutoff = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate() - 1));
+
+  const overdue = await deps.prisma.application.findMany({
+    where: {
+      status: { in: ['OFFER_ISSUED', 'ACCEPTED'] },
+      deletedAt: null,
+      offer: { reportingDate: { lte: cutoff } },
+    },
+    include: { offer: true, student: true },
+  });
+
+  let cancelled = 0;
+  for (const app of overdue) {
+    const reason = `NO_SHOW: reporting date ${app.offer?.reportingDate?.toISOString().slice(0, 10) ?? 'passed'} elapsed without reporting`;
+
+    await deps.prisma.$transaction(async (tx) => {
+      await tx.application.update({
+        where: { id: app.id },
+        data: { status: 'CANCELLED', cancellationReason: reason },
+      });
+
+      await writeAudit(tx as unknown as PrismaClient, {
+        actorId: null,
+        // No SYSTEM role in the enum; the action name carries that it was automatic.
+        actorRole: 'ADMIN_HR',
+        action: 'SYSTEM_NO_SHOW_CANCELLED',
+        entity: 'application',
+        entityId: app.id,
+        before: { status: app.status },
+        after: { status: 'CANCELLED', reason },
+        ip: null,
+        zone: 'internal',
+      });
+    });
+
+    await queueNotification(
+      { prisma: deps.prisma },
+      {
+        applicationId: app.id,
+        to: app.student.email,
+        template: `NO_SHOW: Reporting date passed for ${app.applicationNo ?? app.id}. Registration stands cancelled as per ADA policy.`,
+      },
+    );
+
+    cancelled += 1;
+  }
+
+  return { cancelled };
 };

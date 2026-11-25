@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -319,6 +319,12 @@ describe('public zone: referral redemption and email OTP against Postgres', () =
     expect(download.status).toBe(200);
     expect(download.headers['content-disposition']).toContain('attachment');
     expect(download.headers['x-content-type-options']).toBe('nosniff');
+    expect(Buffer.from(download.body).equals(content)).toBe(true);
+
+    // At rest the file is ciphertext: the PDF header must not be readable on disk.
+    const rawOnDisk = readFileSync(join(storageDir, file.storageKey));
+    expect(rawOnDisk.subarray(0, 8).toString()).toBe('ADAENC1\0');
+    expect(rawOnDisk.includes(Buffer.from('%PDF-1.4'))).toBe(false);
 
     // No session, no bytes.
     const anonymous = await request(publicApp).get(

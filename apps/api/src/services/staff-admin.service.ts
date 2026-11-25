@@ -86,6 +86,8 @@ export interface CreateStaffInput {
   role: Role;
   employeeCode?: string | null;
   directorateId?: string | null;
+  /// Required for SPONSOR: which lab (ADA or another DRDO lab) they sponsor from.
+  labId?: string | null;
 }
 
 export const createStaff = async (
@@ -97,8 +99,24 @@ export const createStaff = async (
   if (input.role === 'STUDENT') {
     throw badRequest('ROLE_NOT_STAFF', 'Student accounts are created by referral, not here');
   }
-  if (!isAdaEmail(input.email)) {
+
+  // A sponsor from another DRDO lab brings their own work address; that is the
+  // whole point of the DRDO-wide referral network (M11). Everyone else is ADA.
+  let lab: { id: string; type: string } | null = null;
+  if (input.role === 'SPONSOR') {
+    if (!input.labId) throw badRequest('LAB_REQUIRED', 'Choose the lab this sponsor belongs to');
+    lab = await deps.prisma.lab.findUnique({
+      where: { id: input.labId },
+      select: { id: true, type: true },
+    });
+    if (!lab) throw badRequest('LAB_NOT_FOUND', 'That lab does not exist');
+  }
+
+  if (!lab && !isAdaEmail(input.email)) {
     throw badRequest('EMAIL_NOT_ALLOWED', 'Staff accounts must use an @ada.gov.in address');
+  }
+  if (lab && lab.type === 'ADA' && !isAdaEmail(input.email)) {
+    throw badRequest('EMAIL_NOT_ALLOWED', 'ADA staff must use an @ada.gov.in address');
   }
 
   const existing = await deps.prisma.user.findFirst({
@@ -115,15 +133,36 @@ export const createStaff = async (
     if (!directorate) throw badRequest('DIRECTORATE_NOT_FOUND', 'That directorate does not exist');
   }
 
-  const created = await deps.prisma.user.create({
-    data: {
-      name: input.name,
-      email: input.email,
-      role: input.role,
-      employeeCode: input.employeeCode?.trim() || null,
-      directorateId: input.directorateId || null,
-    },
-    select: staffSelect,
+  const created = await deps.prisma.$transaction(async (tx) => {
+    const user = await tx.user.create({
+      data: {
+        name: input.name,
+        email: input.email,
+        role: input.role,
+        employeeCode: input.employeeCode?.trim() || null,
+        directorateId: input.directorateId || null,
+      },
+      select: staffSelect,
+    });
+
+    if (lab) {
+      await tx.sponsor.create({
+        data: {
+          userId: user.id,
+          labId: lab.id,
+          fullName: input.name,
+          officialEmail: input.email,
+          employeeRef: input.employeeCode?.trim() || null,
+          // ADA staff are trusted on sight; another DRDO lab's employee waits in
+          // the Admin & HR verification queue before any code they issue works.
+          verificationStatus: lab.type === 'ADA' ? 'VERIFIED' : 'PENDING',
+          quotaYear: new Date().getFullYear(),
+          quotaUsed: 0,
+        },
+      });
+    }
+
+    return user;
   });
 
   await writeAudit(deps.prisma, {
@@ -257,4 +296,73 @@ export const resetStaffAuthenticator = async (
   });
 
   return { reset: true, message: 'The next sign-in will ask for a new authenticator' };
+};
+
+// ---------------------------------------------------------------------------
+// M11 - DRDO-wide referral network: sponsor verification queue
+// ---------------------------------------------------------------------------
+
+export const listSponsors = async (
+  deps: { prisma: PrismaClient },
+  filters: { status?: 'PENDING' | 'VERIFIED' | 'REJECTED' } = {},
+) => {
+  const sponsors = await deps.prisma.sponsor.findMany({
+    where: {
+      isActive: true,
+      ...(filters.status ? { verificationStatus: filters.status } : {}),
+    },
+    include: { lab: { select: { code: true, name: true, type: true } } },
+    orderBy: [{ verificationStatus: 'asc' }, { createdAt: 'desc' }],
+    take: 200,
+  });
+
+  return sponsors.map((sponsor) => ({
+    id: sponsor.id,
+    fullName: sponsor.fullName,
+    officialEmail: sponsor.officialEmail,
+    employeeRef: sponsor.employeeRef,
+    labCode: sponsor.lab.code,
+    labName: sponsor.lab.name,
+    labType: sponsor.lab.type,
+    verificationStatus: sponsor.verificationStatus,
+    verifiedAt: sponsor.verifiedAt,
+    quotaYear: sponsor.quotaYear,
+    quotaUsed: sponsor.quotaUsed,
+    createdAt: sponsor.createdAt,
+  }));
+};
+
+export const verifySponsor = async (
+  deps: { prisma: PrismaClient },
+  sponsorId: string,
+  input: { decision: 'APPROVE' | 'REJECT'; reason?: string },
+  actor: { id: string; role: Role },
+  ip: string | null,
+) => {
+  const sponsor = await deps.prisma.sponsor.findUnique({ where: { id: sponsorId } });
+  if (!sponsor) throw notFound('SPONSOR_NOT_FOUND', 'That sponsor does not exist');
+
+  const nextStatus = input.decision === 'APPROVE' ? 'VERIFIED' : 'REJECTED';
+
+  await deps.prisma.$transaction(async (tx) => {
+    await tx.sponsor.update({
+      where: { id: sponsor.id },
+      data: { verificationStatus: nextStatus, verifiedBy: actor.id, verifiedAt: new Date() },
+    });
+
+    await writeAudit(tx as unknown as PrismaClient, {
+      actorId: actor.id,
+      actorRole: actor.role,
+      action: input.decision === 'APPROVE' ? 'SPONSOR_VERIFIED' : 'SPONSOR_REJECTED',
+      entity: 'sponsor',
+      entityId: sponsor.id,
+      before: { verificationStatus: sponsor.verificationStatus },
+      after: { verificationStatus: nextStatus },
+      reason: input.reason ?? null,
+      ip,
+      zone: 'internal',
+    });
+  });
+
+  return { ok: true, verificationStatus: nextStatus };
 };

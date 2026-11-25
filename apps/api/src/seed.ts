@@ -257,7 +257,7 @@ const main = async (): Promise<void> => {
         size: 182_344,
         sha256: sha256Hex('seed college letter'),
         uploadedBy: null,
-        scanStatus: 'CLEAN',
+        scanStatus: 'PENDING',
       },
     });
 

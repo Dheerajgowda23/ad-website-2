@@ -205,13 +205,18 @@ its sha256, and versioned; documents are soft-deleted, never overwritten. Studen
 their own application's documents; staff downloads need `screening:read` and write an audit row.
 There is a 10 MB cap.
 
-Virus scanning (ClamAV) and signed short-lived links are **not** wired yet: this is the remaining
-M7 hardening item, and uploads from outside ADA should not be enabled before it is. See
+Every file is encrypted at rest with AES-256-GCM (`FILE_ENCRYPTION_KEY`, falling back to
+`SESSION_SECRET` on a dev install), because an Aadhaar scan must not sit readable on the disk. Keep
+that key with your backups: a restore without it cannot decrypt a single document.
+
+Virus scanning (ClamAV) and signed short-lived links are **not** wired yet, so uploads carry
+`scan_status = PENDING` rather than pretending to be clean. This is the remaining M7 hardening item,
+and uploads from outside ADA should not be enabled before it is. See
 `intranet-bundle/docs/GAP-ANALYSIS.md`.
 
 ## Not in this milestone
 
 Still open: ClamAV quarantine/scanning, WAF rules, row-level security policies, background jobs
-(`pg-boss`), LDAP/AD sign-in, Playwright end-to-end flows, bulk casework actions and attendance CSV
-import, fingerprint attendance devices, and the handoff §13 backlog (SMS, payments, eSign,
-bilingual UI, analytics, plagiarism checks).
+(`pg-boss`), LDAP/AD sign-in, a public login for other-DRDO-lab sponsors, Playwright end-to-end
+flows, printable committee/reporting packets, fingerprint attendance devices, and the handoff §13
+backlog (SMS, payments, eSign, bilingual UI, analytics, plagiarism checks).

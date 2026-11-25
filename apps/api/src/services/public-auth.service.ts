@@ -53,7 +53,10 @@ export const redeemReferralCode = async (
     record.revokedAt !== null ||
     record.usedByApplicationId !== null ||
     record.boundStudentEmail !== null ||
-    record.expiresAt.getTime() < Date.now()
+    record.expiresAt.getTime() < Date.now() ||
+    // Handoff M11: an external DRDO sponsor's code is inert until Admin & HR
+    // verify the employee. Same generic error, so the queue leaks nothing.
+    record.sponsor.verificationStatus !== 'VERIFIED'
   ) {
     throw invalidCode();
   }

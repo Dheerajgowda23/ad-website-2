@@ -45,6 +45,9 @@ const baseSchema = z.object({
   WEB_DIST: z.string().optional(),
   // Document storage. A mounted volume in the container; no object store to run.
   FILE_STORAGE_DIR: z.string().default('./data/files'),
+  // Key for AES-256-GCM at rest. Falls back to SESSION_SECRET for dev installs;
+  // set it explicitly in production, and keep it with the backups.
+  FILE_ENCRYPTION_KEY: z.string().min(16).optional(),
   // SMTP relay. Without it, OTP delivery only works with ALLOW_DEV_OTP=true.
   SMTP_HOST: z.string().optional(),
   SMTP_PORT: z.coerce.number().int().positive().default(587),
@@ -52,6 +55,9 @@ const baseSchema = z.object({
   SMTP_USER: z.string().optional(),
   SMTP_PASSWORD: z.string().optional(),
   SMTP_FROM: z.string().default('ADA Internship Portal <no-reply@ada.gov.in>'),
+  // Committee reviews required before a packet leaves COMMITTEE_REVIEW. Capped
+  // by the number of members actually assigned to the batch.
+  COMMITTEE_QUORUM: z.coerce.number().int().min(1).max(9).default(2),
 });
 
 export type Env = z.infer<typeof baseSchema> & { zone: Zone; SECURE_COOKIES: boolean };

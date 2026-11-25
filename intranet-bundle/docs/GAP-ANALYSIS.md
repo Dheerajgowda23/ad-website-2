@@ -13,6 +13,19 @@ The repository implements **M0–M6**. This document separates three things:
 
 ## 1. Added in this pass
 
+### 1.1 Added 25 Nov 2026
+
+| Gap | Why it mattered | What was built |
+|---|---|---|
+| **A single committee member decided the whole packet** | `submitCommitteeReview` advanced the application on the first review, so "committee" was one person with a score box. Contract §6 M6 requires a quorum rule. | `COMMITTEE_QUORUM` (default 2, capped by the members actually assigned to the batch) gates the transition; every review is audited with `reviewsReceived`/`quorum`, and any `NOT_RECOMMEND` stops the packet. |
+| **A sponsor could review their own referral** | Contract §6 M2 excludes the sponsoring employee from any committee review of their own referral; nothing enforced it. | `CONFLICT_OF_INTEREST` 403 before the review is written. |
+| **NO_SHOW never happened** | Contract §5/§11.4: an offer whose reporting date passes is cancelled automatically — the biggest reporting-day failure point. No scheduler existed, so those applications sat in `ACCEPTED` forever. | `sweepNoShows()` runs hourly in the internal zone (and on boot), cancels with `cancellationReason = NO_SHOW…`, writes `SYSTEM_NO_SHOW_CANCELLED` to the audit log and queues the student notification. `POST /casework/maintenance/sweep-no-shows` triggers it by hand. |
+| **No sponsor verification queue** | Contract §6 M11: a sponsor from another DRDO lab must be verified by Admin & HR before their codes work. `PENDING` existed in the schema but nothing set it, listed it, or enforced it. | `POST /api/staff/users` accepts a `labId` for the `SPONSOR` role, creates the sponsor profile `PENDING` for a non-ADA lab (work email allowed, ADA addresses still enforced), and `GET /api/staff/users/sponsors` + `POST /api/staff/users/sponsors/:id/verify` drive a new **Sponsors** tab. Redemption refuses an unverified sponsor's code with the same generic `INVALID_CODE`, so the queue leaks nothing. |
+| **Documents were stored in the clear** | Contract §7 and `AGENTS.md`: the Aadhaar scan must be encrypted at rest. The volume held readable PDFs. | AES-256-GCM at rest (`FILE_ENCRYPTION_KEY`, falling back to `SESSION_SECRET`); new files carry an `ADAENC1` header, pre-existing plaintext files still read. A test asserts the PDF header is not present in the bytes on disk and that the download round-trips. |
+| **`scan_status = CLEAN` with no scanner** | A file nobody had inspected was labelled clean. | Uploads and seed data now record `PENDING`; the schema default already matched. |
+
+### 1.2 Added 24 Nov 2026
+
 | Gap | Why it mattered | What was built |
 |---|---|---|
 | No production web hosting | Both UIs only ran on Vite dev servers on the host — unusable on an air-gapped PC, and cross-origin cookies made sign-in fragile | The API image now builds both SPAs and each zone serves its own UI from the same origin (`WEB_DIST`, SPA fallback, `index.html` no-store, hashed assets immutable) |
@@ -44,10 +57,10 @@ Ordered by what blocks a real go-live. "Contract" refers to CODE-HANDOFF section
 
 | # | Gap | Contract | Detail / what is needed |
 |---|---|---|---|
-| 1 | **No virus scanning / quarantine** | §1.9, §3, §9 | Files are now stored, versioned, hashed and downloadable (local volume; see section 1), but there is no ClamAV, no quarantine state machine and no signed short-lived links — access is by an authenticated, permission-checked route. Add a scanner sidecar and a PENDING → CLEAN/INFECTED transition before accepting uploads from outside ADA. |
+| 1 | **No virus scanning / quarantine** | §1.9, §3, §9 | Files are stored encrypted at rest, versioned, hashed and downloadable (local volume; see section 1), but there is no ClamAV, no quarantine state machine and no signed short-lived links — access is by an authenticated, permission-checked route, and `scan_status` stays `PENDING`. Add a scanner sidecar and a PENDING → CLEAN/INFECTED transition before accepting uploads from outside ADA. |
 | 2 | **No M7 hardening** | §10 M7 | Quarantine + scan (ties to 2.1), WAF rules, alerting on zone mismatch. `zone_events` records mismatches, foreign origins and permission denials, but nothing raises an alert: no mail to Admin & HR, no threshold, no dashboard count. A restore rehearsal is now scripted but has not been performed against production data. |
 | 3 | **RLS not enabled** | §1.6, §9 | Two least-privilege Postgres roles and explicit table grants exist; row-level security policies do not. Today isolation between, say, two directorates rests on application code. Needed before multi-tenant or delegated administration. |
-| 4 | **Public "other DRDO lab" sponsor path** | §2, §3 | The role table says other-lab sponsors get a limited public portal with OTP to their official DRDO address, verified by a nodal officer. SPONSOR is internal-only in `ROLE_ZONE`, and there is no public sponsor login. Either implement it or record the decision that other labs work through ADA's sponsor account for v1. |
+| 4 | **Public "other DRDO lab" sponsor path** | §2, §3 | Other-lab sponsors can now be created with their own work email and lab, and their codes stay inert until Admin & HR verify them (section 1.1). Still missing: a *public* sponsor login for other labs — `SPONSOR` remains internal-only in `ROLE_ZONE`, so a nodal officer must create the account. Either build the public sponsor portal or record the decision that other labs work through an ADA-created account for v1. |
 | 5 | **Background jobs** | §9 | `pg-boss` was the chosen job runner; notification delivery is an in-process interval instead. That is fine for one container per zone but duplicates sends if you ever scale horizontally, and gives no retry/backoff. |
 
 ### 2.2 Incomplete screens / flows

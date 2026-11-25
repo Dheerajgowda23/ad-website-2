@@ -35,6 +35,7 @@ import {
   issueCertificate,
   getSeatLedger,
   listAuditLogs,
+  sweepNoShows,
 } from '../../services/casework.service.js';
 import {
   generateApplicationSummaryPdf,
@@ -552,7 +553,7 @@ export const caseworkRouter = (deps: AppDeps): Router => {
         const staffUserId = String(res.locals.userId ?? '');
         const parsed = committeeReviewSchema.parse(req.body);
         const result = await submitCommitteeReview(
-          { prisma: deps.prisma },
+          { prisma: deps.prisma, env: deps.env },
           String(req.params.id),
           staffUserId,
           parsed,
@@ -928,6 +929,36 @@ export const caseworkRouter = (deps: AppDeps): Router => {
       next(err);
     }
   });
+
+  // 18b. Labs list (sponsor creation and referral attribution)
+  router.get('/meta/labs', async (_req, res, next) => {
+    try {
+      if (!deps.prisma) throw new ApiError(503, 'DB_UNAVAILABLE', 'Database is not configured for this process');
+      const labs = await deps.prisma.lab.findMany({
+        where: { isActive: true },
+        orderBy: { code: 'asc' },
+        select: { id: true, code: true, name: true, type: true },
+      });
+      res.json({ labs });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // 19. Maintenance: cancel offers whose reporting date has passed (NO_SHOW).
+  router.post(
+    '/maintenance/sweep-no-shows',
+    requirePermission(deps, 'screening:write'),
+    async (_req, res, next) => {
+      try {
+        if (!deps.prisma) throw new ApiError(503, 'DB_UNAVAILABLE', 'Database is not configured for this process');
+        const result = await sweepNoShows({ prisma: deps.prisma });
+        res.json(result);
+      } catch (err) {
+        next(err);
+      }
+    },
+  );
 
   return router;
 };

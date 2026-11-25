@@ -647,9 +647,9 @@ export const uploadStudentDocument = async (
         size: stored.size,
         sha256,
         uploadedBy: 'STUDENT',
-        // No scanner in v1 (M7). The status records that no scan happened, and
-        // downloads are forced to an attachment, never rendered inline as HTML.
-        scanStatus: 'CLEAN',
+        // No scanner in v1 (M7). PENDING is the honest status: the file exists and
+        // is downloadable by staff, but nothing has inspected it.
+        scanStatus: 'PENDING',
       },
     });
 

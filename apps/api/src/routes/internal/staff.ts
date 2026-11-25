@@ -6,9 +6,11 @@ import { requirePermission } from '../../middleware/auth.js';
 import { ROLE_LABELS } from '@ada/shared';
 import {
   createStaff,
+  listSponsors,
   listStaff,
   resetStaffAuthenticator,
   updateStaff,
+  verifySponsor,
 } from '../../services/staff-admin.service.js';
 
 const staffRoles = Object.keys(ROLE_LABELS).filter((role) => role !== 'STUDENT') as [
@@ -22,6 +24,12 @@ const createSchema = z.object({
   role: z.enum(staffRoles),
   employeeCode: z.string().trim().max(40).optional().nullable(),
   directorateId: z.string().trim().max(40).optional().nullable(),
+  labId: z.string().trim().max(40).optional().nullable(),
+});
+
+const verifySponsorSchema = z.object({
+  decision: z.enum(['APPROVE', 'REJECT']),
+  reason: z.string().trim().max(500).optional(),
 });
 
 const updateSchema = z
@@ -88,6 +96,31 @@ export const staffUsersRouter = (deps: AppDeps): Router => {
       const actor = res.locals.staff;
       if (!actor) throw new ApiError(401, 'AUTH_REQUIRED', 'Sign in to continue');
       const result = await resetStaffAuthenticator({ prisma }, String(req.params.id), actor, req.ip ?? null);
+      res.json(result);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // --- M11: sponsor verification queue (Admin & HR) -------------------------
+  router.get('/sponsors', requirePermission(deps, 'user:manage'), async (req, res, next) => {
+    try {
+      const prisma = requireDb();
+      const status = req.query.status ? String(req.query.status) : undefined;
+      const sponsors = await listSponsors({ prisma }, status ? { status: status as any } : {});
+      res.json({ sponsors });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.post('/sponsors/:id/verify', requirePermission(deps, 'user:manage'), async (req, res, next) => {
+    try {
+      const prisma = requireDb();
+      const actor = res.locals.staff;
+      if (!actor) throw new ApiError(401, 'AUTH_REQUIRED', 'Sign in to continue');
+      const body = verifySponsorSchema.parse(req.body);
+      const result = await verifySponsor({ prisma }, String(req.params.id), body, actor, req.ip ?? null);
       res.json(result);
     } catch (err) {
       next(err);

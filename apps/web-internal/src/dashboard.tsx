@@ -4,6 +4,9 @@ import { useNavigate } from 'react-router-dom';
 import { ROLE_LABELS, type Permission, type Role, type Level } from '@ada/shared';
 import { api, ApiError } from './api.js';
 
+/** Mirrors SPONSOR_QUOTA_PER_YEAR in the referral service. */
+const SPONSOR_QUOTA_PER_YEAR = 3;
+
 interface MeResponse {
   user: { id: string; name: string; email: string; role: Role; employeeCode: string | null };
   role: Role;
@@ -76,7 +79,7 @@ export const DashboardPage = () => {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [attendanceCsv, setAttendanceCsv] = useState('');
   const [staffNotice, setStaffNotice] = useState('');
-  const [staffForm, setStaffForm] = useState({ name: '', email: '', role: 'GUIDE', employeeCode: '' });
+  const [staffForm, setStaffForm] = useState({ name: '', email: '', role: 'GUIDE', employeeCode: '', labId: '' });
 
   // Modals & Action dialogs
   const [showReferralModal, setShowReferralModal] = useState(false);
@@ -175,6 +178,28 @@ export const DashboardPage = () => {
     enabled: permissions.includes('user:manage') && activeTab === 'staff',
   });
 
+  const labsQuery = useQuery<{ labs: { id: string; code: string; name: string; type: string }[] }>({
+    queryKey: ['labs'],
+    queryFn: () => api('/api/staff/casework/meta/labs'),
+    enabled: permissions.includes('user:manage'),
+  });
+
+  const sponsorsQuery = useQuery<{ sponsors: any[] }>({
+    queryKey: ['sponsors'],
+    queryFn: () => api('/api/staff/users/sponsors'),
+    enabled: permissions.includes('user:manage') && activeTab === 'sponsors',
+  });
+
+  const verifySponsorMut = useMutation({
+    mutationFn: ({ id, decision }: { id: string; decision: 'APPROVE' | 'REJECT' }) =>
+      api(`/api/staff/users/sponsors/${id}/verify`, {
+        method: 'POST',
+        body: JSON.stringify({ decision }),
+      }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['sponsors'] }),
+    onError: (err: Error) => alert(err.message),
+  });
+
   // Bulk casework: one request, per-row results back.
   const bulkMut = useMutation({
     mutationFn: (input: { action: string; ids: string[]; reason?: string }) =>
@@ -211,11 +236,12 @@ export const DashboardPage = () => {
           email: staffForm.email,
           role: staffForm.role,
           employeeCode: staffForm.employeeCode || null,
+          labId: staffForm.labId || null,
         }),
       }),
     onSuccess: () => {
       setStaffNotice('Account created. The person can sign in and enrol an authenticator.');
-      setStaffForm({ name: '', email: '', role: 'GUIDE', employeeCode: '' });
+      setStaffForm({ name: '', email: '', role: 'GUIDE', employeeCode: '', labId: '' });
       queryClient.invalidateQueries({ queryKey: ['staffUsers'] });
     },
     onError: (err: Error) => setStaffNotice(err.message),
@@ -534,6 +560,14 @@ export const DashboardPage = () => {
                 className={`px-3 py-1.5 rounded font-semibold transition ${activeTab === 'staff' ? 'bg-teal-600 text-white' : 'text-slate-300 hover:text-white'}`}
               >
                 Staff & Access
+              </button>
+            )}
+            {permissions.includes('user:manage') && (
+              <button
+                onClick={() => setActiveTab('sponsors')}
+                className={`px-3 py-1.5 rounded font-semibold transition ${activeTab === 'sponsors' ? 'bg-teal-600 text-white' : 'text-slate-300 hover:text-white'}`}
+              >
+                Sponsors
               </button>
             )}
             <button
@@ -1541,8 +1575,87 @@ export const DashboardPage = () => {
         {/* ==================================================================== */}
         {/* TAB 8c: STAFF ACCOUNTS */}
         {/* ==================================================================== */}
-        {activeTab === 'staff' && (
+        {activeTab === 'sponsors' && (
           <div className="space-y-4">
+            <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+              <h2 className="text-base font-bold text-navy-950">Sponsor verification queue</h2>
+              <p className="mt-1 text-xs text-slate-500">
+                Sponsors from another DRDO lab can issue referral codes, but those codes stay inert
+                until the employee is verified here. ADA staff are verified on creation.
+              </p>
+            </div>
+
+            <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+              <table className="w-full text-left text-xs">
+                <thead className="border-b border-slate-200 bg-slate-100 font-semibold uppercase text-slate-700">
+                  <tr>
+                    <th className="p-3">Sponsor</th>
+                    <th className="p-3">Official email</th>
+                    <th className="p-3">Lab</th>
+                    <th className="p-3">Quota</th>
+                    <th className="p-3">Status</th>
+                    <th className="p-3 text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {(sponsorsQuery.data?.sponsors ?? []).map((sponsor) => (
+                    <tr key={sponsor.id}>
+                      <td className="p-3 font-semibold text-navy-950">{sponsor.fullName}</td>
+                      <td className="p-3">{sponsor.officialEmail}</td>
+                      <td className="p-3">
+                        {sponsor.labCode}
+                        <span className="block text-[11px] text-slate-500">{sponsor.labName}</span>
+                      </td>
+                      <td className="p-3 font-mono">
+                        {sponsor.quotaUsed}/{SPONSOR_QUOTA_PER_YEAR}
+                      </td>
+                      <td className="p-3">
+                        <span
+                          className={`chip font-bold ${
+                            sponsor.verificationStatus === 'VERIFIED'
+                              ? 'border-teal-200 bg-teal-50 text-teal-800'
+                              : sponsor.verificationStatus === 'PENDING'
+                                ? 'border-amber-200 bg-amber-50 text-amber-800'
+                                : 'border-rose-200 bg-rose-50 text-rose-800'
+                          }`}
+                        >
+                          {sponsor.verificationStatus}
+                        </span>
+                      </td>
+                      <td className="space-x-2 p-3 text-right">
+                        {sponsor.verificationStatus !== 'VERIFIED' && (
+                          <button
+                            onClick={() => verifySponsorMut.mutate({ id: sponsor.id, decision: 'APPROVE' })}
+                            className="rounded bg-teal-600 px-3 py-1 font-semibold text-white hover:bg-teal-500"
+                          >
+                            Verify
+                          </button>
+                        )}
+                        {sponsor.verificationStatus !== 'REJECTED' && (
+                          <button
+                            onClick={() => verifySponsorMut.mutate({ id: sponsor.id, decision: 'REJECT' })}
+                            className="rounded border border-rose-200 bg-rose-50 px-3 py-1 font-semibold text-rose-700 hover:bg-rose-100"
+                          >
+                            Reject
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                  {(sponsorsQuery.data?.sponsors ?? []).length === 0 && (
+                    <tr>
+                      <td className="p-4 text-slate-500" colSpan={6}>
+                        No sponsors yet.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'staff' && (          <div className="space-y-4">
             <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
               <div>
                 <h2 className="text-base font-bold text-navy-950">Staff accounts</h2>
@@ -1598,6 +1711,22 @@ export const DashboardPage = () => {
                   value={staffForm.employeeCode}
                   onChange={(event) => setStaffForm({ ...staffForm, employeeCode: event.target.value })}
                 />
+                {staffForm.role === 'SPONSOR' && (
+                  <select
+                    className="field"
+                    aria-label="Lab"
+                    value={staffForm.labId}
+                    onChange={(event) => setStaffForm({ ...staffForm, labId: event.target.value })}
+                    required
+                  >
+                    <option value="">Select lab…</option>
+                    {(labsQuery.data?.labs ?? []).map((lab) => (
+                      <option key={lab.id} value={lab.id}>
+                        {lab.code} · {lab.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
                 <button type="submit" className="btn" disabled={createStaffMut.isPending}>
                   {createStaffMut.isPending ? 'Creating…' : 'Create account'}
                 </button>

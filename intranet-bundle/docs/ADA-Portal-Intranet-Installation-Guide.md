@@ -1,7 +1,7 @@
 # ADA Internship & Project Work Portal
 ## Offline Intranet Installation and Operations Guide
 
-Version 1.0 - pilot installation | 24 November 2026
+Version 1.0 - pilot installation | 25 November 2026
 
 > This guide is written for the person installing the portal on a computer that has no internet access. Everything the portal needs is inside this folder. You will not download, build, or install anything from the internet on that machine.
 
@@ -279,6 +279,8 @@ Uploaded college letters, IDs and police clearances are files on a Docker volume
 
 Rehearse a restore before go-live, on a test machine or after taking a fresh backup. A backup that has never been restored is not a backup. The restore script asks you to type RESTORE before it touches anything.
 
+Documents are encrypted at rest with FILE_ENCRYPTION_KEY (or SESSION_SECRET if that key is unset). The .env in the backup holds it: restore the database and the files without that exact value and every document is unreadable ciphertext. Treat the .env as part of the data, not as configuration.
+
 ### 9.2 Upgrading to a newer build
 
 1. Take a backup.
@@ -300,6 +302,8 @@ Rehearse a restore before go-live, on a test machine or after taking a fresh bac
 | POSTGRES_* | Database name, owner and passwords. Generated at install; keep them. |
 | PORTAL_PUBLIC_DB_PASSWORD / PORTAL_INTERNAL_DB_PASSWORD | Passwords for the two restricted database roles. |
 | SESSION_SECRET, OTP_PEPPER, REFERRAL_HMAC_PEPPER, TOTP_PEPPER | Signing and hashing secrets. Changing them invalidates sessions, pending OTPs and referral lookups. |
+| FILE_ENCRYPTION_KEY | Key that encrypts uploaded documents at rest (AES-256-GCM). Defaults to SESSION_SECRET on a pilot install; set it explicitly and keep it with the backups, or a restored database cannot decrypt a single document. |
+| COMMITTEE_QUORUM | Committee reviews required before a packet leaves committee review. Default 2, capped by the members assigned to the batch. |
 | SMTP_HOST / SMTP_PORT / SMTP_USER / SMTP_PASSWORD / SMTP_FROM | Internal mail relay used for OTP and notification email. |
 
 > If you edit .env after the database volume has been created, changing POSTGRES_PASSWORD will not change the existing database password and the APIs will fail to connect. Either keep the original value or recreate the volume deliberately (which erases data).
