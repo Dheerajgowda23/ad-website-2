@@ -641,7 +641,7 @@ describe('Full End-to-End Workflow & Milestone Verification', () => {
     expect(ledgerRes.body.summary.ug.occupied).toBeGreaterThanOrEqual(1);
   });
 
-  it('M6: Reporting day Security pass -> In Training -> Attendance -> Completion -> Certificate with QR', async () => {
+  it('M6: Reporting day Security pass -> In Training', async () => {
     // 1. Security verifies police clearance and ID proof
     await securityAgent
       .post(`/api/staff/casework/applications/${createdApplicationId}/verify-joining`)
@@ -654,6 +654,17 @@ describe('Full End-to-End Workflow & Milestone Verification', () => {
       .expect(200);
 
     expect(passRes.body.status).toBe('IN_TRAINING');
+  });
+
+  // The import is guarded by attendance:write alone, so a GUIDE must be able to
+  // use it without the reporting:read permission the register screen requires.
+  it('M6: A GUIDE can enter and bulk-import attendance', async () => {
+    const me = await guideAgent.get('/api/staff/me').expect(200);
+    expect(me.body.permissions).toContain('attendance:write');
+    expect(me.body.permissions).not.toContain('reporting:read');
+
+    // The register itself stays Admin & HR only.
+    await guideAgent.get('/api/staff/casework/attendance/report?month=2026-06').expect(403);
 
     // 3. Guide enters attendance
     await guideAgent
@@ -682,7 +693,9 @@ describe('Full End-to-End Workflow & Milestone Verification', () => {
       .expect(200);
     expect(imported.body.imported).toBe(1);
     expect(imported.body.failed).toBe(1);
+  });
 
+  it('M6: Guide completes training -> Certificate with QR', async () => {
     // 4. Guide completes training
     const compRes = await guideAgent
       .post(`/api/staff/casework/applications/${createdApplicationId}/complete`)

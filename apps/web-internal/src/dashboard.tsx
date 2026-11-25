@@ -512,12 +512,12 @@ export const DashboardPage = () => {
                 Trainees & Attendance
               </button>
             )}
-            {permissions.includes('reporting:read') && (
+            {(permissions.includes('reporting:read') || permissions.includes('attendance:write')) && (
               <button
                 onClick={() => setActiveTab('attendance')}
                 className={`px-3 py-1.5 rounded font-semibold transition ${activeTab === 'attendance' ? 'bg-teal-600 text-white' : 'text-slate-300 hover:text-white'}`}
               >
-                Attendance Report
+                {permissions.includes('reporting:read') ? 'Attendance Report' : 'Attendance Import'}
               </button>
             )}
             {permissions.includes('audit:read') && (
@@ -1411,32 +1411,36 @@ export const DashboardPage = () => {
         {/* ==================================================================== */}
         {activeTab === 'attendance' && (
           <div className="space-y-4">
-            <div className="flex flex-wrap items-end justify-between gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-              <div>
-                <h2 className="text-base font-bold text-navy-950">Monthly attendance register</h2>
-                <p className="mt-1 text-xs text-slate-500">
-                  Entered by guides. 100% attendance is required for the completion certificate.
-                </p>
-              </div>
-              <div className="flex items-end gap-2">
+            {/* A GUIDE has attendance:write but not reporting:read, so it reaches
+                this tab for the import panel only; the register stays gated. */}
+            {permissions.includes('reporting:read') && (
+              <div className="flex flex-wrap items-end justify-between gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
                 <div>
-                  <label className="label" htmlFor="attendance-month">Month</label>
-                  <input
-                    id="attendance-month"
-                    type="month"
-                    className="field"
-                    value={attendanceMonth}
-                    onChange={(event) => setAttendanceMonth(event.target.value)}
-                  />
+                  <h2 className="text-base font-bold text-navy-950">Monthly attendance register</h2>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Entered by guides. 100% attendance is required for the completion certificate.
+                  </p>
                 </div>
-                <a
-                  className="btn inline-flex items-center"
-                  href={`/api/staff/casework/attendance/export.csv?month=${attendanceMonth}`}
-                >
-                  Export CSV
-                </a>
+                <div className="flex items-end gap-2">
+                  <div>
+                    <label className="label" htmlFor="attendance-month">Month</label>
+                    <input
+                      id="attendance-month"
+                      type="month"
+                      className="field"
+                      value={attendanceMonth}
+                      onChange={(event) => setAttendanceMonth(event.target.value)}
+                    />
+                  </div>
+                  <a
+                    className="btn inline-flex items-center"
+                    href={`/api/staff/casework/attendance/export.csv?month=${attendanceMonth}`}
+                  >
+                    Export CSV
+                  </a>
+                </div>
               </div>
-            </div>
+            )}
 
             {permissions.includes('attendance:write') && (
               <div className="space-y-2 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
