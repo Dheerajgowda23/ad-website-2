@@ -42,6 +42,11 @@ WINDOWS - EXACT STEPS
        ADA staff             : http://localhost:4001
      Accounts, TOTP secrets and referral codes are in seed-output.txt.
 
+  5. Prove it works, in one command:
+       docker compose -f docker-compose.intranet.yml --profile tools run --rm -T tools node /app/verify.mjs
+     Every line must say PASS. Accounts, test data and what each check proves:
+       docs\TESTING.md   (read this before handing the PC over)
+
   If you want other PCs on the intranet to reach it:
        powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1 -PortalHost 10.0.0.25
      (use this PC's LAN IP or hostname; Windows Firewall must allow ports 4000/4001)
@@ -126,6 +131,7 @@ WHAT THIS VERSION DOES NOT DO YET
   SMS, payments. See docs/GAP-ANALYSIS.md before promising a go-live date.
 
 FULL INSTRUCTIONS
+  docs/TESTING.md                                   (run, test, credentials)
   docs/ADA-Portal-Intranet-Installation-Guide.pdf   (print this)
   docs/ADA-Portal-Intranet-Installation-Guide.docx  (editable)
   docs/ADA-Portal-Intranet-Installation-Guide.md

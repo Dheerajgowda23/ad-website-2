@@ -136,6 +136,12 @@ services:
       TOTP_PEPPER: ${TOTP_PEPPER}
       MIGRATION_DATABASE_URL: postgresql://${POSTGRES_USER:-portal_owner}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-ada_portal}?schema=public
       DATABASE_URL: postgresql://${POSTGRES_USER:-portal_owner}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-ada_portal}?schema=public
+      # scripts/verify.mjs talks to the zones over the compose network, not the
+      # published ports, so it works whatever PUBLIC_HOST_PORT is set to.
+      VERIFY_PUBLIC_URL: http://api-public:4000
+      VERIFY_INTERNAL_URL: http://api-internal:4001
+    volumes:
+      - ./scripts/verify.mjs:/app/verify.mjs:ro
     depends_on:
       db:
         condition: service_healthy
