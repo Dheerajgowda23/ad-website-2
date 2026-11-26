@@ -21,12 +21,16 @@ export const Navbar = () => {
             <img
               src="/brand/ada-logo.png"
               alt="Aeronautical Development Agency"
-              className="h-11 w-11 object-contain"
+              className="h-10 w-10 object-contain"
             />
             <span className="h-8 w-px bg-slate-200" aria-hidden="true"></span>
-            <img src="/brand/drdo-logo.png" alt="DRDO" className="h-10 w-10 object-contain" />
+            <img
+              src="/brand/drdo-logo.png"
+              alt="DRDO"
+              className="h-10 w-10 object-contain"
+            />
           </div>
-          <div className="leading-tight hidden sm:block">
+          <div className="hidden sm:block">
             <span className="block text-[10px] text-blue-700 tracking-[0.25em] font-bold uppercase">
               DRDO Nodal Centre // Bengaluru
             </span>
@@ -68,7 +72,7 @@ export const Navbar = () => {
             to="/login"
             className="inline-flex items-center justify-center rounded-md bg-blue-600 px-4 py-2.5 text-xs uppercase tracking-[0.12em] font-bold text-white hover:bg-blue-700 active:bg-blue-800 transition-all shadow-sm"
           >
-            Redeem &amp; Apply
+            Redeem & Apply
           </Link>
         </div>
       </div>

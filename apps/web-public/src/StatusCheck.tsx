@@ -53,7 +53,7 @@ export const StatusCheckPage = () => {
             <span className="text-[10px] font-mono tracking-[0.25em] uppercase text-blue-700 font-bold block mb-1">
               // STATUS VERIFICATION
             </span>
-            <h1 className="text-2xl font-bold text-slate-900">Application Status Tracking</h1>
+            <h1 className="text-2xl font-bold text-slate-900">Application Status</h1>
             <p className="mt-2 text-xs text-slate-500">
               Query current screening, Directorate confirmation, and security clearance status.
             </p>
@@ -76,7 +76,6 @@ export const StatusCheckPage = () => {
               <label className="label">Date of Birth</label>
               <input
                 type="date"
-                max={new Date().toISOString().slice(0, 10)}
                 value={dob}
                 onChange={(e) => setDob(e.target.value)}
                 required
@@ -93,31 +92,34 @@ export const StatusCheckPage = () => {
             </button>
           </form>
 
-          {statusQuery.isLoading && (
+          {statusQuery.isLoading && statusQuery.error === undefined && (
             <div className="mt-6 text-center text-xs font-mono text-blue-600 animate-pulse">
               [Fetching application records]...
             </div>
           )}
 
-          {statusQuery.isError && (
+          {statusQuery.isError && statusQuery.error && (
             <div role="alert" className="mt-6 rounded-lg border border-red-200 bg-red-50 p-4 text-xs text-red-800 space-y-2">
               <p className="font-mono font-bold">
                 [LOOKUP_ERROR]: {(statusQuery.error as ApiError).message || 'No matching application record found.'}
               </p>
               {(statusQuery.error as ApiError).code === 'APPLICATION_NOT_FOUND' ? (
                 <p className="leading-relaxed text-red-700">
-                  An application number is issued only when you submit. If you have not submitted yet,
-                  open{' '}
-                  <Link to="/application" className="underline font-semibold">
+                  No application record matches the provided application number and date of birth.
+                  If you have not submitted your application yet, please open <a
+                    href="/application"
+                    className="underline font-semibold"
+                  >
                     My Application
-                  </Link>{' '}
-                  and sign in with your registered email. If you have submitted, copy the number
-                  exactly as printed (for example ADA/INT/R/2026/0001) and use the same date of birth
-                  you entered in the form.
+                  </a> and sign in with your registered email.
+                  If you have already submitted, copy the application number exactly as printed
+                  (for example ADA/INT/R/2026/0001) and use the same date of birth you entered
+                  in the form.
                 </p>
               ) : (
                 <p className="leading-relaxed text-red-700">
-                  The lookup could not be completed just now. Please try again in a moment.
+                  The lookup could not be completed just now. Please verify your application number
+                  and date of birth, and try again in a moment.
                 </p>
               )}
             </div>
