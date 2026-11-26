@@ -1,17 +1,6 @@
-import { Link, useLocation } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 
 export const Navbar = () => {
-  const location = useLocation();
-
-  const navLinks = [
-    { to: '/', label: 'Overview' },
-    { to: '/guidelines', label: 'Guidelines' },
-    { to: '/downloads', label: 'Downloads' },
-    { to: '/faq', label: 'FAQ' },
-    { to: '/verify', label: 'Verify Certificate' },
-    { to: '/application', label: 'My Application' },
-  ];
-
   return (
     <header className="sticky top-0 z-50 border-b border-slate-200 bg-white/95 backdrop-blur-md shadow-2xs">
       <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-6 lg:px-10 h-20">
@@ -31,34 +20,14 @@ export const Navbar = () => {
             />
           </div>
           <div className="hidden sm:block">
-            <span className="block text-[10px] text-blue-700 tracking-[0.25em] font-bold uppercase">
-              DRDO Nodal Centre // Bengaluru
-            </span>
             <h1 className="serif-heading text-lg font-bold text-navy-950 tracking-tight">
               Aeronautical <span className="text-blue-600">Development Agency</span>
             </h1>
+            <span className="block text-[10px] text-slate-500 tracking-[0.2em] font-semibold uppercase">
+              Ministry of Defence · Bengaluru
+            </span>
           </div>
         </Link>
-
-        {/* Navigation Links */}
-        <nav className="hidden xl:flex items-center gap-6">
-          {navLinks.map((link) => {
-            const isActive = location.pathname === link.to;
-            return (
-              <Link
-                key={link.to}
-                to={link.to}
-                className={`text-xs uppercase tracking-[0.14em] font-medium transition-all ${
-                  isActive
-                    ? 'text-blue-600 font-bold border-b-2 border-blue-600 pb-1'
-                    : 'text-slate-600 hover:text-navy-950'
-                }`}
-              >
-                {link.label}
-              </Link>
-            );
-          })}
-        </nav>
 
         {/* Entry actions: the two things an applicant ever needs */}
         <div className="flex items-center gap-2">

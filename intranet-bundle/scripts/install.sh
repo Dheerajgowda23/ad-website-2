@@ -36,6 +36,13 @@ for tarball in "${tarballs[@]}"; do
   docker load -i "$tarball" >/dev/null
 done
 
+say "Verifying the images are present locally"
+docker image inspect postgres:16-alpine >/dev/null 2>&1 \
+  || fail "postgres:16-alpine was not loaded. Copy the whole bundle, including images/*.tar.gz, then run this again."
+docker images --format '{{.Repository}}:{{.Tag}}' | grep -q '^ada-portal-api:' \
+  || fail "ada-portal-api was not loaded. Copy the whole bundle, including images/*.tar.gz, then run this again."
+echo "  images ready"
+
 if [ ! -f .env ]; then
   say "Writing .env with random secrets"
   secret() { openssl rand -hex 24 2>/dev/null || head -c 32 /dev/urandom | base64 | tr -d '\n=+/'; }
@@ -99,7 +106,8 @@ if [ "$SEED" = 1 ]; then
 fi
 
 say "Installed"
-IP=$(hostname -I 2>/dev/null | awk '{print $1}')
+# hostname -I is Linux-only; fall back to the macOS interface address, then to blank.
+IP="$(hostname -I 2>/dev/null | awk '{print $1}')" || IP="$(ipconfig getifaddr en0 2>/dev/null)" || IP=""
 echo "  Public zone (students/other labs) : http://localhost:${PUBLIC_HOST_PORT:-4000}"
 echo "  Internal zone (ADA staff)         : http://localhost:${INTERNAL_HOST_PORT:-4001}"
 if [ -n "${IP:-}" ]; then

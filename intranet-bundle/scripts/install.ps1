@@ -37,6 +37,13 @@ foreach ($t in $tarballs) {
   if ($LASTEXITCODE -ne 0) { Fail "docker load failed for $($t.Name)" }
 }
 
+Say "Verifying the images are present locally"
+docker image inspect postgres:16-alpine *> $null
+if ($LASTEXITCODE -ne 0) { Fail "postgres:16-alpine was not loaded. Copy the whole bundle, including images\*.tar.gz, then run this again." }
+$apiImages = @(docker images --format "{{.Repository}}:{{.Tag}}" | Where-Object { $_ -like "ada-portal-api:*" })
+if ($apiImages.Count -eq 0) { Fail "ada-portal-api was not loaded. Copy the whole bundle, including images\*.tar.gz, then run this again." }
+Write-Host "  found: postgres:16-alpine, $($apiImages -join ', ')"
+
 function New-Secret {
   $bytes = New-Object byte[] 24
   [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)

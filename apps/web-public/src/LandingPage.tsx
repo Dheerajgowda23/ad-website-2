@@ -28,6 +28,19 @@ export const LandingPage: React.FC = () => {
     },
   ];
 
+  // Student-facing stages, in the order the portal moves an application.
+  const stages = [
+    ['01', 'Sponsored by ADA / DRDO Employee', 'Referral code redeemed'],
+    ['02', 'Application Submitted', 'Form complete and submitted'],
+    ['03', 'Under Scrutiny', 'HR eligibility verification'],
+    ['04', 'Committee Review', 'Selection committee scoring'],
+    ['05', 'Approved', 'Director approval and offer issued'],
+    ['06', 'Reporting Day', 'PCC, photo ID and security pass'],
+    ['07', 'Training In Progress', 'Guide assigned, attendance recorded'],
+    ['08', 'Completion Pending', 'Guide clearance and report copy'],
+    ['09', 'Certificate Issued', 'Download with QR verification'],
+  ];
+
   return (
     <div className="min-h-screen blueprint-bg text-slate-800 flex flex-col font-sans selection:bg-blue-600 selection:text-white relative">
       {/* Main Navbar */}
@@ -39,47 +52,38 @@ export const LandingPage: React.FC = () => {
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-14 items-center">
             {/* Left Narrative Column */}
             <div className="lg:col-span-7 space-y-6">
-              {/* Emblems & Badges */}
-              <div className="flex items-center gap-3.5 flex-wrap">
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50/90 px-3 py-1 text-xs font-semibold text-blue-800 uppercase tracking-wider shadow-2xs">
-                  <span className="w-1.5 h-1.5 rounded-full bg-blue-600 animate-pulse"></span>
-                  Official Intake · 2025–2026 Session
+              {/* Official ADA & DRDO crests */}
+              <div className="flex items-center gap-3">
+                <img
+                  src="/brand/ada-logo.png"
+                  alt="Aeronautical Development Agency"
+                  className="h-14 w-auto object-contain"
+                />
+                <span className="h-10 w-px bg-slate-200" aria-hidden="true"></span>
+                <img src="/brand/drdo-logo.png" alt="DRDO" className="h-12 w-auto object-contain" />
+                <span className="ml-1 inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50/90 px-3 py-1 text-[10px] font-semibold text-blue-800 uppercase tracking-wider">
+                  <span className="w-1.5 h-1.5 rounded-full bg-blue-600"></span>
+                  Intake 2025–2026
                 </span>
-
-                <div className="flex items-center gap-2">
-                  <span className="h-6 px-2 rounded bg-slate-900 text-white text-[10px] font-bold tracking-widest flex items-center justify-center">
-                    ADA
-                  </span>
-                  <span className="h-6 px-2 rounded bg-blue-700 text-white text-[10px] font-bold tracking-widest flex items-center justify-center">
-                    DRDO
-                  </span>
-                  <span className="text-xs font-medium text-slate-500 uppercase tracking-wider">
-                    Bengaluru
-                  </span>
-                </div>
               </div>
 
               {/* High-Impact Headline */}
               <div>
                 <h1 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight text-slate-900 leading-[1.14]">
-                  Train with the team behind{' '}
-                  <span className="text-blue-600">LCA Tejas</span>
-                  <br />
-                  and <span className="text-blue-600">AMCA</span> — ADA Internship &amp; Project
-                  Training
+                  ADA Internship &amp; Project Training Portal
                 </h1>
                 <p className="mt-4 text-base sm:text-lg text-slate-600 leading-relaxed max-w-2xl">
-                  Aeronautical Development Agency (ADA), Ministry of Defence, Bengaluru, is the nodal
-                  agency pioneering indigenous supersonic combat aircraft including LCA Tejas, AMCA, and TEDBF.
-                  This unified portal governs transparent, referral-backed intake for India&apos;s leading engineering talent.
+                  Aeronautical Development Agency (ADA), Ministry of Defence, Bengaluru invites
+                  applications for internship and project training. Entry is referral-only: a valid
+                  code from an ADA or DRDO employee is required to open the application form.
                 </p>
               </div>
 
-              {/* Entry actions: apply, track, or reopen an application */}
+              {/* Entry actions: Redeem Code & Apply, or Track. No referral entry here. */}
               <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm max-w-xl">
                 <div className="flex items-center justify-between mb-3">
                   <span className="text-[10px] font-mono font-bold tracking-[0.2em] text-blue-700 uppercase">
-                    // START OR TRACK AN APPLICATION
+                    START OR TRACK AN APPLICATION
                   </span>
                   <span className="text-[10px] font-mono text-slate-400">REFERRAL ONLY</span>
                 </div>
@@ -98,16 +102,14 @@ export const LandingPage: React.FC = () => {
                     to="/status-check"
                     className="inline-flex flex-1 items-center justify-center rounded-lg border border-slate-300 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition"
                   >
-                    Track My Application
+                    Track Application
                   </Link>
                 </div>
 
                 <p className="mt-3 text-xs text-slate-500 leading-relaxed border-t border-slate-100 pt-3">
-                  The referral code is asked on the next screen, not here. Already applied?{' '}
-                  <Link to="/application" className="text-blue-600 hover:underline font-semibold">
-                    Open My Application
-                  </Link>{' '}
-                  with your registered email, or track it with your application number and date of birth.
+                  The referral code is entered on the next screen, never on this page. Already
+                  applied? Use <span className="font-semibold text-slate-700">Track Application</span>{' '}
+                  with your application number and date of birth.
                 </p>
               </div>
 
@@ -281,6 +283,43 @@ export const LandingPage: React.FC = () => {
         </div>
       </section>
 
+      {/* How to apply and how to track */}
+      <section className="py-16 bg-white border-b border-slate-200/80">
+        <div className="mx-auto max-w-7xl px-6 lg:px-10">
+          <div className="text-center mb-10">
+            <span className="text-xs font-bold uppercase tracking-wider text-blue-600 block mb-1">
+              How It Works
+            </span>
+            <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">
+              Apply, then track your application
+            </h2>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto">
+            <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-6">
+              <h3 className="font-bold text-slate-900 mb-3">How to apply</h3>
+              <ol className="space-y-2 text-sm text-slate-600 list-decimal list-inside">
+                <li>Get a one-time referral code from an ADA or DRDO employee.</li>
+                <li>Click <span className="font-semibold text-slate-800">Redeem Code &amp; Apply</span>.</li>
+                <li>Enter the referral code and verify the email OTP.</li>
+                <li>Fill every step of the form, then press <span className="font-semibold text-slate-800">Submit</span>.</li>
+                <li>Note the application number shown after submission.</li>
+              </ol>
+            </div>
+
+            <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-6">
+              <h3 className="font-bold text-slate-900 mb-3">How to track</h3>
+              <ol className="space-y-2 text-sm text-slate-600 list-decimal list-inside">
+                <li>Click <span className="font-semibold text-slate-800">Track Application</span> in the header.</li>
+                <li>Enter your application number exactly, e.g. ADA/INT/R/2026/0001.</li>
+                <li>Enter the same date of birth you used in the form.</li>
+                <li>Press <span className="font-semibold text-slate-800">Search Dossier Status</span> to see the current stage.</li>
+              </ol>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Core Research Wings */}
       <section className="py-20 bg-white border-b border-slate-200/80">
         <div className="mx-auto max-w-7xl px-6 lg:px-10">
@@ -369,61 +408,37 @@ export const LandingPage: React.FC = () => {
         </div>
       </section>
 
-      {/* 5-Step Admission Lifecycle */}
+      {/* 9-Stage Application Tracker */}
       <section className="py-20 bg-slate-50 border-b border-slate-200/80">
         <div className="mx-auto max-w-7xl px-6 lg:px-10">
-          <div className="text-center max-w-2xl mx-auto mb-14">
+          <div className="text-center max-w-2xl mx-auto mb-12">
             <span className="text-xs font-bold uppercase tracking-wider text-blue-600 block mb-1">
-              Admission Lifecycle
+              Application Tracker
             </span>
             <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">
-              The 5-Stage Induction Pipeline
+              Your 9-Stage Journey
             </h2>
             <p className="mt-2 text-sm text-slate-600">
-              Rigorous, referral-backed onboarding ensuring the highest levels of merit and integrity.
+              Every application moves through these stages. Track Application shows the stage your
+              dossier has reached.
             </p>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-            <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-2xs">
-              <span className="text-xs font-mono font-bold text-blue-600 mb-2 block">PHASE 01</span>
-              <h4 className="text-sm font-bold text-slate-900 mb-1">Referral Code</h4>
-              <p className="text-xs text-slate-500 leading-relaxed">
-                Authorized ADA/DRDO employee generates one-time referral code with quota tracking.
-              </p>
-            </div>
-
-            <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-2xs">
-              <span className="text-xs font-mono font-bold text-blue-600 mb-2 block">PHASE 02</span>
-              <h4 className="text-sm font-bold text-slate-900 mb-1">Email OTP Auth</h4>
-              <p className="text-xs text-slate-500 leading-relaxed">
-                Applicant redeems code online; session verified through dual-factor email OTP.
-              </p>
-            </div>
-
-            <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-2xs">
-              <span className="text-xs font-mono font-bold text-blue-600 mb-2 block">PHASE 03</span>
-              <h4 className="text-sm font-bold text-slate-900 mb-1">College Dossier</h4>
-              <p className="text-xs text-slate-500 leading-relaxed">
-                Submission of signed Bonafide NOC, marksheets, and aligned project synopsis.
-              </p>
-            </div>
-
-            <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-2xs">
-              <span className="text-xs font-mono font-bold text-blue-600 mb-2 block">PHASE 04</span>
-              <h4 className="text-sm font-bold text-slate-900 mb-1">HR &amp; Committee</h4>
-              <p className="text-xs text-slate-500 leading-relaxed">
-                Administrative screening and Directorate Head topic confirmation against fixed seat quotas.
-              </p>
-            </div>
-
-            <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-2xs">
-              <span className="text-xs font-mono font-bold text-blue-600 mb-2 block">PHASE 05</span>
-              <h4 className="text-sm font-bold text-slate-900 mb-1">Security Pass</h4>
-              <p className="text-xs text-slate-500 leading-relaxed">
-                Security clearance approval, biometric badge issuance, and reporting to assigned guide.
-              </p>
-            </div>
+          <div className="space-y-2 max-w-3xl mx-auto">
+            {stages.map(([no, title, detail]) => (
+              <div
+                key={no}
+                className="flex items-start gap-4 rounded-lg border border-slate-200 bg-white p-4 shadow-2xs"
+              >
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-50 text-xs font-mono font-bold text-blue-700">
+                  {no}
+                </span>
+                <div>
+                  <div className="text-sm font-bold text-slate-900">{title}</div>
+                  <div className="text-xs text-slate-500">{detail}</div>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       </section>
@@ -561,9 +576,11 @@ export const LandingPage: React.FC = () => {
         <div className="max-w-7xl mx-auto grid md:grid-cols-4 gap-10">
           <div className="col-span-2 space-y-3">
             <div className="flex items-center gap-3">
-              <div className="flex h-8 w-8 items-center justify-center rounded bg-blue-600 text-[11px] font-bold text-white">
-                ADA
-              </div>
+              <img
+                src="/brand/ada-logo.png"
+                alt="Aeronautical Development Agency"
+                className="h-9 w-9 rounded bg-white object-contain p-0.5"
+              />
               <div>
                 <div className="text-sm font-semibold text-white">
                   Aeronautical Development Agency

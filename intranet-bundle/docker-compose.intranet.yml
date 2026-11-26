@@ -16,6 +16,8 @@ name: ada-portal
 services:
   db:
     image: postgres:16-alpine
+    # Never reach for the internet: the tarball in images/ must be loaded first.
+    pull_policy: never
     container_name: ada-db
     restart: unless-stopped
     environment:
@@ -39,6 +41,7 @@ services:
 
   migrate:
     image: ada-portal-api:${ADA_IMAGE_TAG:-1.0.0}
+    pull_policy: never
     container_name: ada-migrate
     restart: "no"
     environment:
@@ -50,6 +53,7 @@ services:
 
   api-public:
     image: ada-portal-api:${ADA_IMAGE_TAG:-1.0.0}
+    pull_policy: never
     container_name: ada-api-public
     restart: unless-stopped
     environment: &api-env
@@ -90,6 +94,7 @@ services:
 
   api-internal:
     image: ada-portal-api:${ADA_IMAGE_TAG:-1.0.0}
+    pull_policy: never
     container_name: ada-api-internal
     restart: unless-stopped
     environment:
@@ -114,6 +119,7 @@ services:
 
   tools:
     image: ada-portal-api:${ADA_IMAGE_TAG:-1.0.0}
+    pull_policy: never
     container_name: ada-tools
     profiles: ["tools"]
     restart: "no"

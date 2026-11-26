@@ -93,6 +93,17 @@ const STAGES = [
   { key: 'CERTIFICATE_ISSUED', label: '9. Completed' },
 ];
 
+// Date helpers work in UTC so a date picked in IST never lands one day early.
+const isoDay = (d: Date) =>
+  new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+const addDays = (iso: string, days: number) => {
+  if (!iso) return '';
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+};
+const defaultStart = addDays(isoDay(new Date()), 30);
+
 export const ApplicationPage = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -126,8 +137,8 @@ export const ApplicationPage = () => {
     yearOfStudy: '3rd Year',
     cgpa: 8.0,
     durationWeeks: 16,
-    startDate: '2026-06-01',
-    endDate: '2026-09-20',
+    startDate: defaultStart,
+    endDate: addDays(defaultStart, 16 * 7),
     topic: '',
     synopsis: '',
     employeeChildFlag: false,
@@ -314,14 +325,10 @@ export const ApplicationPage = () => {
   };
 
   // Dates: the end date follows the start date plus the chosen duration, and a
-  // start date in the past is not allowed.
-  const addWeeks = (iso: string, weeks: number) => {
-    if (!iso) return '';
-    const date = new Date(`${iso}T00:00:00`);
-    date.setDate(date.getDate() + weeks * 7);
-    return date.toISOString().slice(0, 10);
-  };
-  const todayIso = new Date().toISOString().slice(0, 10);
+  // start date less than 30 days away is not allowed.
+  const addWeeks = (iso: string, weeks: number) => addDays(iso, weeks * 7);
+  const todayIso = isoDay(new Date());
+  const earliestStartIso = addDays(todayIso, 30);
   const dateRangeInvalid = Boolean(
     formData.startDate && formData.endDate && formData.endDate <= formData.startDate,
   );
@@ -578,6 +585,7 @@ export const ApplicationPage = () => {
                   <label className="label">Date of Birth</label>
                   <input
                     type="date"
+                    max={todayIso}
                     value={formData.dob}
                     onChange={(e) => setFormData({ ...formData, dob: e.target.value })}
                     required
@@ -846,7 +854,7 @@ export const ApplicationPage = () => {
                     <label className="label">Proposed Start Date</label>
                     <input
                       type="date"
-                      min={todayIso}
+                      min={earliestStartIso}
                       value={formData.startDate}
                       onChange={(e) => {
                         const startDate = e.target.value;

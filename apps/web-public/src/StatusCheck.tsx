@@ -37,14 +37,6 @@ export const StatusCheckPage = () => {
 
   return (
     <div className="min-h-screen blueprint-bg text-slate-800 flex flex-col font-sans">
-      {/* Top classification header */}
-      <div className="border-b border-slate-200 bg-slate-900 text-slate-300 text-[11px] py-2 px-6">
-        <div className="mx-auto max-w-6xl flex items-center justify-between">
-          <span className="font-medium text-slate-300">APPLICATION TRACKING DOSSIER</span>
-          <span className="font-mono text-[10px] text-slate-400">LOOKUP: REAL-TIME SECURE QUERY</span>
-        </div>
-      </div>
-
       <Navbar />
 
       <main className="mx-auto max-w-xl flex-1 px-6 py-12 w-full space-y-6">
