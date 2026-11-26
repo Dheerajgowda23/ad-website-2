@@ -92,6 +92,31 @@ Note: sign-in is rate limited to five codes per ten minutes per source IP, and o
 A second run inside ten minutes starts returning `RATE_LIMITED`. Wait ten minutes, or clear the
 counter with `docker compose -f docker-compose.intranet.yml restart api-internal`, then retry.
 
+### Testing the student side too
+
+Add `--student` to test the whole public journey, not just its read-only parts:
+
+```
+docker compose -f docker-compose.intranet.yml --profile tools run --rm -T tools node /app/verify.mjs --student
+```
+
+It signs in as the sponsor, issues a real referral code, redeems it on the public zone, requests and
+verifies the mailbox code, loads the application form as that student, and finally proves the same
+code cannot be redeemed twice:
+
+```
+[6] Student journey on the public zone
+  PASS  sponsor issues a code for the test student  (LRDE-26-TXFB-P5AU, 0 of 3 left this year)
+  PASS  the public zone accepts the code and names the sponsor  (LRDE UG, sponsored by Vikram Shetty)
+  PASS  the student verifies the mailbox code and gets a session  (new application created)
+  PASS  the application form loads for that student  (no number yet, IN_PROGRESS, editable=true)
+  PASS  the same code cannot be redeemed a second time  (401 INVALID_CODE)
+```
+
+This consumes one of the sponsor's three codes for the year and creates a `test.student@example.edu.in`
+application, so run it a couple of times at most on a demo install. `--issue-referral` alone only
+prints a code plus the instructions to use it by hand, and changes nothing else.
+
 ---
 
 ## 3. Test accounts
@@ -124,22 +149,32 @@ prints the current code for an account.
 
 ## 4. Seeded student data
 
-| What | Value |
-| --- | --- |
-| Application number | `ADA/INT/R/2026/0001` |
-| Date of birth (status check) | `2003-04-18` |
-| Candidate | Ananya Iyer, `ananya.iyer@example.edu.in` |
-| Status | `SUBMITTED` |
-| Lab / level | LRDE / UG |
+Six applications, one per pipeline stage, all at LRDE. The public status check needs the number
+**and** the date of birth.
+
+| Application number | Status | Date of birth | Candidate |
+| --- | --- | --- | --- |
+| `ADA/INT/R/2026/0001` | SUBMITTED (editable) | `2003-04-18` | Ananya Iyer |
+| `ADA/INT/R/2026/0002` | HR_SCREENING | `2002-11-02` | Rohan Mehta |
+| `ADA/INT/R/2026/0003` | COMMITTEE_REVIEW (PG) | `2001-06-25` | Priya Nair |
+| `ADA/INT/R/2026/0004` | OFFER_ISSUED | `2003-01-14` | Karthik Rao |
+| `ADA/INT/R/2026/0005` | REJECTED_ELIGIBILITY | `2002-08-09` | Meghna Das |
+| `ADA/INT/R/2026/0006` | IN_PROGRESS (draft) | `2003-09-30` | Arjun Pillai |
+
+All six also print at the end of every seed run and in `seed-output.txt`.
 
 Public status check, no login:
 
 ```
-http://localhost:4000/status   ->  ADA/INT/R/2026/0001  +  2003-04-18
+http://localhost:4000/status   ->  ADA/INT/R/2026/0004  +  2003-01-14
 ```
 
-Expected: candidate name, LRDE, UG, **SUBMITTED**. A wrong date of birth returns "not found" - that
+Expected: Karthik Rao, LRDE, UG, **OFFER_ISSUED**. A wrong date of birth returns "not found" - that
 is the check working, not a bug.
+
+Each row gives the staff side something to work on: `0001` can still be edited by the student,
+`0002` sits in HR screening, `0003` is the PG committee case, `0004` has an offer letter to open,
+`0005` shows a rejection reason, `0006` is a half-filled draft.
 
 ---
 
@@ -206,8 +241,10 @@ Expected counts on a freshly seeded install:
 | `users` | 7 |
 | `directorates` | 5 |
 | `labs` | 5 |
-| `students` | 1 |
-| `applications` | 1 |
+| `students` | 6 |
+| `applications` | 6 |
+| `offers` | 1 |
+| `documents` | 5 |
 | `referral_codes` | 3 |
 | `feature_flags` | 6 |
 | `audit_log` | grows with every sign-in and action |
