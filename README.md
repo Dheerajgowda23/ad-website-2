@@ -18,6 +18,23 @@ db/                 grants for the two Postgres roles
 prisma              schema + first migration (apps/api/prisma)
 ```
 
+## Offline install on an air-gapped Windows PC
+
+The normal `docker compose up` below needs the internet (it pulls Postgres and builds the image).
+For a PC with **no internet**, do not use it. Download the prebuilt bundle from the GitHub Release:
+
+**https://github.com/Dheerajgowda23/ad-website-2/releases/tag/intranet-v1.0.0**
+
+- Asset: `ada-portal-offline-1.0.0.zip` (about 309 MB, contains both linux/amd64 images).
+- On any PC with internet: download it, then copy it to the intranet PC by USB.
+- On the intranet PC: extract it, start Docker Desktop, then run
+  `powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1`
+- Open `http://localhost:4000` (students) and `http://localhost:4001` (staff).
+- Full steps and troubleshooting: `README.txt` inside the zip.
+
+The source code in this repository is not enough to run offline: Docker still needs the two image
+tarballs, because it cannot download `node:22-slim` or `postgres:16-alpine` without internet.
+
 ## Run it
 
 Everything in containers:
