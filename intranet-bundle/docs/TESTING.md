@@ -88,9 +88,9 @@ What the checks prove, one by one:
 | `403 FOREIGN_ORIGIN` | cross-site POSTs are refused |
 | SECURITY `403` | a role without `user:manage` cannot reach user admin |
 
-Note: the sign-in steps are rate limited (5 codes per 10 minutes per source IP). Running the script
-four times in a row will start returning `RATE_LIMITED`; wait ten minutes or restart the API
-containers.
+Note: sign-in is rate limited to five codes per ten minutes per source IP, and one run uses three.
+A second run inside ten minutes starts returning `RATE_LIMITED`. Wait ten minutes, or clear the
+counter with `docker compose -f docker-compose.intranet.yml restart api-internal`, then retry.
 
 ---
 
