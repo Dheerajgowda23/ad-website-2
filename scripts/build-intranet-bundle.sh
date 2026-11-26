@@ -55,18 +55,27 @@ else
   echo "  .tools/venv missing - install python-docx and reportlab, or copy the docs in by hand" >&2
 fi
 
-say "Writing checksums"
+say "Writing checksums for the files that ship"
+# Only what the zip contains. prerequisites/ and source/ stay on the build machine,
+# so checksumming them would make "shasum -c" fail on the intranet PC.
 (
   cd "$BUNDLE"
-  { shasum -a 256 images/*.tar.gz
-    find prerequisites/windows prerequisites/linux source -type f \( -name '*.exe' -o -name '*.msi' -o -name '*.deb' -o -name '*.tar.gz' \) -print0 \
-      | xargs -0 shasum -a 256
-  } > SHA256SUMS.txt
+  find . -type f \
+    ! -path './prerequisites/*' ! -path './source/*' \
+    ! -name 'SHA256SUMS.txt' ! -name '.env' ! -name 'seed-output.txt' ! -name '.DS_Store' \
+    -print0 | sort -z | xargs -0 shasum -a 256 > SHA256SUMS.txt
 )
 
-say "Bundle ready: $BUNDLE/"
+say "Building the release zip"
+ZIP="ada-portal-offline-${VERSION}.zip"
+rm -f "$ZIP"
+( cd "$BUNDLE" && zip -r -X -q "$(cd .. && pwd)/$ZIP" \
+    README.txt SHA256SUMS.txt .env.example db docker-compose.intranet.yml docs images scripts )
+
+say "Bundle ready: $BUNDLE/ and $ZIP"
 du -sh "$BUNDLE"
-ls -lh "$BUNDLE/images"
+ls -lh "$BUNDLE/images" "$ZIP"
 echo
-echo "Copy the whole $BUNDLE folder to the intranet PC and run scripts/install.ps1 (Windows)"
-echo "or scripts/install.sh (Linux). Image tag to set there: ADA_IMAGE_TAG=${VERSION}"
+echo "Upload $ZIP to the release, then copy the same zip to the intranet PC and run"
+echo "scripts/install.ps1 (Windows) or scripts/install.sh (Linux). Image tag: ADA_API_TAG=${VERSION}"
+echo "Check the install with: docker compose -f docker-compose.intranet.yml --profile tools run --rm -T tools node /app/verify.mjs"

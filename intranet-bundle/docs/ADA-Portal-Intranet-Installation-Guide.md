@@ -104,21 +104,18 @@ ada-portal-intranet/
   images/                        the two Docker images (the portal and its dependencies)
     ada-portal-api-1.0.0-linux-amd64.tar.gz     Node 22 + all npm packages + both UIs + API
     postgres-16-alpine-linux-amd64.tar.gz       PostgreSQL 16
-  prerequisites/                 Docker installers for a bare PC (still offline)
-    windows/DockerDesktopInstaller.exe, wsl_update_x64.msi
-    linux/ubuntu-jammy/, linux/ubuntu-noble/  Docker Engine .deb files
-    install-docker-windows.ps1, install-docker-ubuntu.sh
-  source/                        the application source, for audit and reference
   db/grants.sql                  creates the two restricted database roles
   db/init-roles.sh               feeds the generated role passwords to grants.sql
   scripts/                       install, start, stop, status, logs, backup, restore,
-                                 enrol-totp, issue-referral, use-host
+                                 enrol-totp, issue-referral, use-host, verify
                                  (.sh for Linux/macOS, .ps1 for Windows)
-  docs/                          this guide (PDF and DOCX) and the gap analysis
+  docs/                          this guide (PDF and DOCX), TESTING.md, gap analysis
   SHA256SUMS.txt                 checksums to prove the copy is intact
 ```
 
 Do not rename or move files out of the folder. The scripts find everything relative to their own location.
+
+> prerequisites/ (Docker installers) and source/ (the application source) are build-machine extras and are left out of the published release zip, which keeps it to one manageable download. The portal never needs the source: the images already contain it, compiled. Install Docker Desktop from docker.com if the PC does not have it yet.
 
 ## 4. Copy the bundle to the intranet PC
 
@@ -163,7 +160,7 @@ What the installer does, in order:
 3. Writes .env with randomly generated database passwords and signing secrets, and restricts the file.
 4. Starts PostgreSQL, waits for it, then applies the database migrations as the schema owner.
 5. Starts the public and internal zones and waits until both answer their health check.
-6. Seeds the seven staff accounts, the directorates, the labs, the feature flags, one sample application, and three referral codes. Seeding is safe to repeat: it updates rows instead of duplicating them.
+6. Seeds the seven staff accounts, the directorates, the labs, the feature flags, six sample applications (one per pipeline stage), and three referral codes. Seeding is safe to repeat: it updates rows instead of duplicating them.
 
 Expected final lines:
 
@@ -257,6 +254,21 @@ Issue a referral code first - students cannot register without one:
 
 > These accounts exist so the system can be demonstrated and tested. Before real use, rename or disable them, enrol a real authenticator for every person (section 11), and turn off development OTP echo (section 12).
 
+### 8.4 Demo applications
+
+The seed creates one application per pipeline stage, so every screen has something to open. The public status check - no sign-in - needs the application number and the date of birth:
+
+| Application number | Status | Date of birth | Candidate |
+|---|---|---|---|
+| ADA/INT/R/2026/0001 | SUBMITTED | 2003-04-18 | Ananya Iyer |
+| ADA/INT/R/2026/0002 | HR_SCREENING | 2002-11-02 | Rohan Mehta |
+| ADA/INT/R/2026/0003 | COMMITTEE_REVIEW | 2001-06-25 | Priya Nair |
+| ADA/INT/R/2026/0004 | OFFER_ISSUED | 2003-01-14 | Karthik Rao |
+| ADA/INT/R/2026/0005 | REJECTED_ELIGIBILITY | 2002-08-09 | Meghna Das |
+| ADA/INT/R/2026/0006 | IN_PROGRESS | 2003-09-30 | Arjun Pillai |
+
+> Check one at http://localhost:4000 - application number plus date of birth. A wrong date returns not found, which is the check working. These six are demonstration data: delete them before real applications are accepted.
+
 ## 9. Everyday operations
 
 | Task | Windows | Linux |
@@ -270,6 +282,8 @@ Issue a referral code first - students cannot register without one:
 | Enrol authenticator | .\scripts\enroll-totp.ps1 <email> | ./scripts/enroll-totp.sh <email> |
 | Issue referral | .\scripts\issue-referral.ps1 -Level UG -Name X -Email y | ./scripts/issue-referral.sh UG X y |
 | Change portal host | edit .env, then start.ps1 | ./scripts/use-host.sh <host> |
+| Verify the install | docker compose -f docker-compose.intranet.yml --profile tools run --rm -T tools node /app/verify.mjs | same command |
+| Verify the student side | ... the same command with --student (uses one referral code) | same command |
 
 ### 9.1 Backups
 

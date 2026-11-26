@@ -25,11 +25,15 @@ For a PC with **no internet**, do not use it. Download the prebuilt bundle from 
 
 **https://github.com/Dheerajgowda23/ad-website-2/releases/tag/intranet-v1.0.0**
 
-- Asset: `ada-portal-offline-1.0.0.zip` (about 309 MB, contains both linux/amd64 images).
+- Asset: `ada-portal-offline-1.0.0.zip` (about 324 MB, contains both linux/amd64 images).
 - On any PC with internet: download it, then copy it to the intranet PC by USB.
 - On the intranet PC: extract it, start Docker Desktop, then run
   `powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1`
 - Open `http://localhost:4000` (students) and `http://localhost:4001` (staff).
+- Prove the install, in one command:
+  `docker compose -f docker-compose.intranet.yml --profile tools run --rm -T tools node /app/verify.mjs`
+  (add `--student` to walk the whole public journey). Every line must say PASS.
+- Test accounts, the six seeded applications and what each check proves: `docs/TESTING.md`.
 - Full steps and troubleshooting: `README.txt` inside the zip.
 
 The source code in this repository is not enough to run offline: Docker still needs the two image

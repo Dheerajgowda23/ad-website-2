@@ -22,3 +22,5 @@ intranet-bundle/prerequisites/windows/*.exe
 intranet-bundle/prerequisites/windows/*.msi
 intranet-bundle/prerequisites/linux/
 intranet-bundle/source/
+# Release archive written by scripts/build-intranet-bundle.sh.
+ada-portal-offline-*.zip
