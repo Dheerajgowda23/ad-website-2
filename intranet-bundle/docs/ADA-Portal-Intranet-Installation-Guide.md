@@ -160,7 +160,7 @@ What the installer does, in order:
 3. Writes .env with randomly generated database passwords and signing secrets, and restricts the file.
 4. Starts PostgreSQL, waits for it, then applies the database migrations as the schema owner.
 5. Starts the public and internal zones and waits until both answer their health check.
-6. Seeds the seven staff accounts, the directorates, the labs, the feature flags, six sample applications (one per pipeline stage), and three referral codes. Seeding is safe to repeat: it updates rows instead of duplicating them.
+6. Seeds the seven staff accounts, the directorates, the labs, the feature flags, six sample applications (one per pipeline stage), and three student sign-in codes with a student profile behind each one. Seeding is safe to repeat: it updates rows instead of duplicating them.
 
 Expected final lines:
 
@@ -170,7 +170,7 @@ Expected final lines:
   Internal zone (ADA staff)         : http://localhost:4001
 ```
 
-The seeded account table and the three one-time referral codes are printed during seeding and saved to seed-output.txt in the bundle folder. Read them there; the codes cannot be recovered later.
+The seeded account table and the three student sign-in codes are printed during seeding and saved to seed-output.txt in the bundle folder. The codes are fixed, so they are the same on every install and in section 8.2.
 
 > If PowerShell refuses to run the script, that is the default execution policy, not a problem with the bundle. Use the -ExecutionPolicy Bypass form shown above, or run Set-ExecutionPolicy -Scope Process Bypass first.
 
@@ -229,16 +229,19 @@ The second check is the zone split. A 404 means the public process genuinely has
 
 ### 8.2 Student (public zone)
 
-Issue a referral code first - students cannot register without one:
+Students cannot register. The seed creates three referral codes, each with a student profile behind it, and the codes are the same on every install:
 
-```
-.\scripts\issue-referral.ps1 -Level UG -Name "Test Student" -Email test@college.edu.in
-# Linux: ./scripts/issue-referral.sh UG "Test Student" test@college.edu.in
-```
+| Referral code | Level | Email to type | Student |
+|---|---|---|---|
+| LRDE-26-DEMU-G239 | UG | sneha.kulkarni@example.edu.in | Sneha Kulkarni |
+| LRDE-26-DEMU-G476 | UG | imran.sheikh@example.edu.in | Imran Sheikh |
+| LRDE-26-DEMP-G58D | PG | divya.menon@example.edu.in | Divya Menon |
 
 1. Open http://localhost:4000 and choose the student sign-in.
-2. Enter the referral code. The portal shows who referred the student, then asks for an email address.
-3. Request the code (shown on screen in pilot mode), enter it, and the application opens in progress.
+2. Enter one referral code, then the email from the same row. The portal shows who referred the student.
+3. Request the code (shown on screen in pilot mode), enter it, and the application opens in progress, with that student's personal and college details already filled in.
+
+Each code is single use. A spent code cannot be reused - reset the demo database for a clean slate. To mint an extra code instead: .\scripts\issue-referral.ps1 (scripts/issue-referral.sh on Linux). TESTING.md section 5 has the course and project details that complete the application.
 
 ### 8.3 Seeded accounts
 
@@ -283,7 +286,7 @@ The seed creates one application per pipeline stage, so every screen has somethi
 | Issue referral | .\scripts\issue-referral.ps1 -Level UG -Name X -Email y | ./scripts/issue-referral.sh UG X y |
 | Change portal host | edit .env, then start.ps1 | ./scripts/use-host.sh <host> |
 | Verify the install | docker compose -f docker-compose.intranet.yml --profile tools run --rm -T tools node /app/verify.mjs | same command |
-| Verify the student side | ... the same command with --student (uses one referral code) | same command |
+| Verify the student side | ... the same command with --student (uses a seeded student code) | same command |
 
 ### 9.1 Backups
 

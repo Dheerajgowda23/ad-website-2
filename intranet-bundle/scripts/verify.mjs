@@ -8,8 +8,8 @@
  *     tools node /app/verify.mjs
  *
  *   ... add --issue-referral to also mint a fresh student code and print it,
- *   ... add --student to sign a brand-new student in end to end (uses one of the
- *       sponsor's three referral codes for the year).
+ *   ... add --student to sign a student in end to end with one of the three
+ *       seeded codes (the same codes on every install; see TESTING.md section 5).
  *
  * Nothing here writes to the portal except the optional referral. It uses only
  * node's built-in fetch, so it runs on any machine that has the image, with no
@@ -24,6 +24,14 @@ const TEST_STUDENT_EMAIL = process.env.VERIFY_STUDENT_EMAIL || 'test.student@exa
 
 // What `npm run db:seed` creates on a fresh database (apps/api/src/seed.ts).
 const SEEDED_APP = { applicationNo: 'ADA/INT/R/2026/0001', dob: '2003-04-18' };
+
+// Fixed student sign-in codes. Each has a student profile behind it, so the form
+// opens with the personal and college fields already filled in.
+const SEEDED_REFERRALS = [
+  { code: 'LRDE-26-DEMU-G239', email: 'sneha.kulkarni@example.edu.in', name: 'Sneha Kulkarni', level: 'UG' },
+  { code: 'LRDE-26-DEMU-G476', email: 'imran.sheikh@example.edu.in', name: 'Imran Sheikh', level: 'UG' },
+  { code: 'LRDE-26-DEMP-G58D', email: 'divya.menon@example.edu.in', name: 'Divya Menon', level: 'PG' },
+];
 
 let failed = 0;
 
@@ -236,30 +244,35 @@ const main = async () => {
   if (STUDENT_JOURNEY) {
     console.log('\n[6] Student journey on the public zone');
     let code = '';
+    let studentEmail = '';
+    let studentName = '';
     let referralToken = '';
     let studentCookie = '';
 
-    await check('sponsor issues a code for the test student', async () => {
-      const issued = await issueReferral(sponsor, TEST_STUDENT_EMAIL);
-      code = issued.code;
-      return `${code}, ${issued.quotaRemaining} of 3 left this year`;
-    });
-
-    await check('the public zone accepts the code and names the sponsor', async () => {
-      const res = await request(PUBLIC_URL, '/api/public/auth/redeem', { method: 'POST', body: { code } });
-      expect(res.status === 200, `HTTP ${res.status} ${res.text.slice(0, 120)}`);
-      expect(res.json?.referralToken, 'no referralToken in the response');
-      referralToken = res.json.referralToken;
-      const preview = res.json.referral ?? {};
-      return `${preview.labCode} ${preview.level}, sponsored by ${preview.sponsorName}`;
+    await check('a seeded student code is accepted and names the sponsor', async () => {
+      const refused = [];
+      for (const candidate of SEEDED_REFERRALS) {
+        const res = await request(PUBLIC_URL, '/api/public/auth/redeem', { method: 'POST', body: { code: candidate.code } });
+        if (res.status === 200 && res.json?.referralToken) {
+          code = candidate.code;
+          studentEmail = candidate.email;
+          studentName = candidate.name;
+          referralToken = res.json.referralToken;
+          const preview = res.json.referral ?? {};
+          return `${code} (${preview.labCode} ${preview.level}), sponsored by ${preview.sponsorName}`;
+        }
+        refused.push(`${candidate.code} -> HTTP ${res.status}`);
+      }
+      throw new Error(`no seeded code is usable (${refused.join(', ')}); reset the demo database, TESTING.md section 9`);
     });
 
     await check('the student verifies the mailbox code and gets a session', async () => {
+      expect(referralToken, 'no code was accepted, nothing to test');
       const first = await request(PUBLIC_URL, '/api/public/auth/otp/request', {
         method: 'POST',
-        body: { referralToken, email: TEST_STUDENT_EMAIL },
+        body: { referralToken, email: studentEmail },
       });
-      expect(first.status === 202, `otp/request HTTP ${first.status}`);
+      expect(first.status === 202, `otp/request HTTP ${first.status} ${first.text.slice(0, 120)}`);
       expect(first.json?.devCode, 'no devCode returned - set ALLOW_DEV_OTP=true in .env');
 
       const second = await request(PUBLIC_URL, '/api/public/auth/otp/verify', {
@@ -272,15 +285,19 @@ const main = async () => {
       return second.json?.resumed ? 'resumed an existing application' : 'new application created';
     });
 
-    await check('the application form loads for that student', async () => {
+    await check('the form opens with the seeded student profile filled in', async () => {
+      expect(studentCookie, 'login failed, nothing to test');
       const res = await request(PUBLIC_URL, '/api/public/application', { cookie: studentCookie });
       expect(res.status === 200, `HTTP ${res.status}`);
       const application = res.json?.application;
       expect(application, 'no application in the response');
-      return `${application.applicationNo ?? 'no number yet'}, ${application.status}, editable=${application.editable}`;
+      expect(application.student?.fullName === studentName, `fullName=${application.student?.fullName}, expected ${studentName}`);
+      expect(application.student?.collegeName, 'college name is blank - the seeded profile was not used');
+      return `${application.student.fullName}, ${application.student.collegeName}, ${application.status}, editable=${application.editable}`;
     });
 
     await check('the same code cannot be redeemed a second time', async () => {
+      expect(code, 'no code was accepted, nothing to test');
       const res = await request(PUBLIC_URL, '/api/public/auth/redeem', { method: 'POST', body: { code } });
       expect(res.status === 401, `expected 401, got HTTP ${res.status}`);
       expect(res.json?.error?.code === 'INVALID_CODE', `code=${res.json?.error?.code}`);

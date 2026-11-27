@@ -100,22 +100,21 @@ Add `--student` to test the whole public journey, not just its read-only parts:
 docker compose -f docker-compose.intranet.yml --profile tools run --rm -T tools node /app/verify.mjs --student
 ```
 
-It signs in as the sponsor, issues a real referral code, redeems it on the public zone, requests and
-verifies the mailbox code, loads the application form as that student, and finally proves the same
-code cannot be redeemed twice:
+It takes the first seeded student code that has not been spent yet (the three in section 5), redeems
+it on the public zone, requests and verifies the mailbox code, proves the form opens with that
+student's profile already filled in, and finally proves the same code cannot be redeemed twice:
 
 ```
 [6] Student journey on the public zone
-  PASS  sponsor issues a code for the test student  (LRDE-26-TXFB-P5AU, 0 of 3 left this year)
-  PASS  the public zone accepts the code and names the sponsor  (LRDE UG, sponsored by Vikram Shetty)
+  PASS  a seeded student code is accepted and names the sponsor  (LRDE-26-DEMU-G239 (LRDE UG), sponsored by Vikram Shetty)
   PASS  the student verifies the mailbox code and gets a session  (new application created)
-  PASS  the application form loads for that student  (no number yet, IN_PROGRESS, editable=true)
+  PASS  the form opens with the seeded student profile filled in  (Sneha Kulkarni, RV College of Engineering, IN_PROGRESS, editable=true)
   PASS  the same code cannot be redeemed a second time  (401 INVALID_CODE)
 ```
 
-This consumes one of the sponsor's three codes for the year and creates a `test.student@example.edu.in`
-application, so run it a couple of times at most on a demo install. `--issue-referral` alone only
-prints a code plus the instructions to use it by hand, and changes nothing else.
+Each run spends one code and creates that student's application, so three runs is the maximum on one
+database. It does not touch the sponsor's quota. `--issue-referral` alone only mints and prints a
+fresh code, and changes nothing else.
 
 ---
 
@@ -176,29 +175,63 @@ Each row gives the staff side something to work on: `0001` can still be edited b
 `0002` sits in HR screening, `0003` is the PG committee case, `0004` has an offer letter to open,
 `0005` shows a rejection reason, `0006` is a half-filled draft.
 
+These six are read-only demo packets for the status check and the staff screens. They are **not** the
+student sign-in accounts - those are the three referral codes in section 5.
+
 ---
 
-## 5. Student sign-in (referral flow)
+## 5. Student sign-in (referral flow) - test data
 
-Students cannot self-register. They need a referral code from a sponsor.
+Students cannot self-register. They need a referral code from a sponsor. The seed creates three codes
+and a complete student profile behind each one. The codes are **fixed**, so they are identical on
+every install and are printed at the end of every seed run (and in `seed-output.txt`).
 
-Where the codes are: the installer printed them once, and saved the same text to
-**`seed-output.txt`** in the bundle folder. Look for the three lines under
-`Referral codes issued just now`. They look like `LRDE-26-XXXX-XXXX`, two UG and one PG. The
-database stores only a hash, so a lost code cannot be recovered - issue a new one instead:
+| Referral code | Level | Type this email | Student | Date of birth |
+| --- | --- | --- | --- | --- |
+| `LRDE-26-DEMU-G239` | UG | `sneha.kulkarni@example.edu.in` | Sneha Kulkarni | `2003-02-11` |
+| `LRDE-26-DEMU-G476` | UG | `imran.sheikh@example.edu.in` | Imran Sheikh | `2002-07-19` |
+| `LRDE-26-DEMP-G58D` | PG | `divya.menon@example.edu.in` | Divya Menon | `2000-12-08` |
+
+Use the code and the email from the **same row** - the first verified email owns the code.
+
+1. `http://localhost:4000` -> paste the referral code -> Continue.
+2. Type the email from that row -> Continue.
+3. The 6-digit code appears on screen (demo mode) -> paste it -> the application form opens.
+
+The form opens on **Personal Details** already filled in from the seeded profile: full name, date of
+birth, father's name, gender, Aadhaar last four digits, mobile, permanent and local address, college,
+university, roll number, college address and category. That is the "data inside" the login: nothing
+to type before you can look around.
+
+The course and project fields belong to the application, not the profile, so they start blank. Fill
+them from the table below to get a complete application (the synopsis is only needed to submit).
+
+| Code | Discipline | Branch | Degree | Semester | Year | CGPA | Weeks | Start | Topic |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `…G239` | Aerospace Engineering | `AE` | B.E. | 7th Semester | 4th Year | 8.6 | 16 | `2026-01-05` | Structural health monitoring of a composite wing spar |
+| `…G476` | Computer Science | `CS` | B.E. | 7th Semester | 4th Year | 8.1 | 16 | `2026-01-05` | Flight-test telemetry visualisation dashboard |
+| `…G58D` | Aerospace Engineering | `AE` | M.Tech | 3rd Semester | 2nd Year | 9.0 | 24 | `2026-01-05` | Aeroelastic tailoring of a composite UAV wing |
+
+Synopsis to paste (under 150 words):
+
+- `…G239`: Embedded piezoelectric sensors on a composite wing spar, with a damage index computed from guided-wave signals and compared against a finite-element model.
+- `…G476`: Web dashboard that replays post-flight telemetry with synchronised parameter plots, event markers and a shared timeline for test engineers.
+- `…G58D`: Ply-orientation study of a composite UAV wing to push flutter speed up without adding mass, validated against a reduced-order aeroelastic model.
+
+Each code is single use: once a student has signed in with it, it cannot be redeemed again (the
+portal answers `401 INVALID_CODE`, deliberately without saying whether it is used, expired or
+revoked). Re-running the seed does not revive it. When all three are spent, reset the demo database
+(section 9) to get them back - they are the same three codes.
+
+To prove this flow without a browser, run the `--student` command in section 2. To mint an extra code
+from the sponsor side instead:
 
 ```
 docker compose -f docker-compose.intranet.yml --profile tools run --rm -T tools node /app/verify.mjs --issue-referral
 ```
 
 That signs in as the sponsor, mints a fresh UG code, prints it, and shows the remaining quota
-(3 per sponsor per year). Then use the public zone:
-
-1. `http://localhost:4000` -> paste the referral code -> Continue.
-2. Type any email (e.g. `test.student@example.edu.in`) -> Continue.
-3. The 6-digit code appears on screen (demo mode) -> paste it -> you are in the application form.
-
-Each code is single use. Reusing a spent code returns `CODE_ALREADY_USED`, which is correct.
+(3 per sponsor per year).
 
 ---
 
@@ -241,7 +274,7 @@ Expected counts on a freshly seeded install:
 | `users` | 7 |
 | `directorates` | 5 |
 | `labs` | 5 |
-| `students` | 6 |
+| `students` | 9 (6 demo packets + 3 sign-in profiles) |
 | `applications` | 6 |
 | `offers` | 1 |
 | `documents` | 5 |
@@ -292,8 +325,8 @@ docker compose -f docker-compose.intranet.yml up -d
 docker compose -f docker-compose.intranet.yml --profile tools run --rm -T tools npm run db:seed -w @ada/api | tee seed-output.txt
 ```
 
-New referral codes are printed each time a fresh database is seeded; the TOTP secrets stay the same
-because they come from the email address.
+The three referral codes are fixed, so they come back exactly as listed in section 5. The TOTP secrets
+stay the same too, because they come from the email address.
 
 ---
 
@@ -306,6 +339,7 @@ because they come from the email address.
 | `seeded application ... HTTP 404` | database is empty (`install --no-seed`) | run the seed command in section 9 |
 | `... HTTP 500` on status check | migrations not applied | `docker compose ... logs ada-migrate` |
 | `RATE_LIMITED` | more than 5 sign-in codes in 10 minutes | wait 10 minutes |
+| `no seeded code is usable` | all three referral codes have been spent | reset the demo database (section 9) |
 | `FOREIGN_ORIGIN` in a browser | `.env` has the wrong `PUBLIC_APP_ORIGIN` / `INTERNAL_APP_ORIGIN` | fix them to the address you use in the browser, then `up -d` |
 | `image not found locally` | images were never loaded | `docker load -i` both files in `images\` |
 

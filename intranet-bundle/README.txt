@@ -40,7 +40,9 @@ WINDOWS - EXACT STEPS
   4. Open the portal:
        Students / other labs : http://localhost:4000
        ADA staff             : http://localhost:4001
-     Accounts, TOTP secrets and referral codes are in seed-output.txt.
+     Accounts and TOTP secrets are in seed-output.txt. The three student sign-in
+     codes are fixed (LRDE-26-DEMU-G239, LRDE-26-DEMU-G476, LRDE-26-DEMP-G58D)
+     with their emails - see docs\TESTING.md section 5.
 
   5. Prove it works, in one command:
        docker compose -f docker-compose.intranet.yml --profile tools run --rm -T tools node /app/verify.mjs

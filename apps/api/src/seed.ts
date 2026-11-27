@@ -9,8 +9,9 @@
 import { createHash } from 'node:crypto';
 import { PrismaClient, type ApplicationStatus } from '@prisma/client';
 import { loadEnv } from './config/env.js';
-import { base32Encode, generateReferralBody, hmacHex, sha256Hex } from './lib/crypto.js';
+import { base32Encode, hmacHex, sha256Hex } from './lib/crypto.js';
 import {
+  checksumForBody,
   formatApplicationNo,
   formatReferralCode,
   permissionsForRole,
@@ -247,6 +248,102 @@ const TEST_APPLICATIONS: SeedApplication[] = [
   },
 ];
 
+interface SeedReferral {
+  /** Seven symbols from the code alphabet; the checksum symbol is appended. */
+  payload: string;
+  level: Level;
+  student: SeedApplication;
+}
+
+/**
+ * Student sign-in data. Each code is fixed (not random) and always printed, so
+ * the same three codes work on every demo install and can be written down.
+ *
+ * The student row is seeded with the full profile but no application: signing in
+ * with the code creates the application, which then opens with these personal
+ * and college fields already filled in.
+ */
+const TEST_REFERRALS: SeedReferral[] = [
+  {
+    payload: 'DEMUG23',
+    level: 'UG',
+    student: {
+      seq: 0,
+      name: 'Sneha Kulkarni',
+      email: 'sneha.kulkarni@example.edu.in',
+      dob: '2003-02-11',
+      fatherName: 'R. Kulkarni',
+      gender: 'Female',
+      aadhaarLast4: '6142',
+      phone: '9845012345',
+      address: '14, Jayanagar 4th Block, Bengaluru, Karnataka 560011',
+      collegeName: 'RV College of Engineering',
+      universityName: 'Visvesvaraya Technological University',
+      rollNumber: '1RV21AE067',
+      level: 'UG',
+      discipline: 'Aerospace Engineering',
+      branchCode: 'AE',
+      cgpa: 8.6,
+      topic: 'Structural health monitoring of a composite wing spar',
+      synopsis:
+        'Embedded piezoelectric sensors on a composite wing spar, with a damage index computed from guided-wave signals and compared against a finite-element model.',
+      status: 'SUBMITTED',
+    },
+  },
+  {
+    payload: 'DEMUG47',
+    level: 'UG',
+    student: {
+      seq: 0,
+      name: 'Imran Sheikh',
+      email: 'imran.sheikh@example.edu.in',
+      dob: '2002-07-19',
+      fatherName: 'A. Sheikh',
+      gender: 'Male',
+      aadhaarLast4: '8873',
+      phone: '9900123456',
+      address: '22, Shivajinagar, Pune, Maharashtra 411005',
+      collegeName: 'M. S. Ramaiah Institute of Technology',
+      universityName: 'Visvesvaraya Technological University',
+      rollNumber: '1MS21CS104',
+      level: 'UG',
+      discipline: 'Computer Science',
+      branchCode: 'CS',
+      cgpa: 8.1,
+      topic: 'Flight-test telemetry visualisation dashboard',
+      synopsis:
+        'Web dashboard that replays post-flight telemetry with synchronised parameter plots, event markers and a shared timeline for test engineers.',
+      status: 'SUBMITTED',
+    },
+  },
+  {
+    payload: 'DEMPG58',
+    level: 'PG',
+    student: {
+      seq: 0,
+      name: 'Divya Menon',
+      email: 'divya.menon@example.edu.in',
+      dob: '2000-12-08',
+      fatherName: 'S. Menon',
+      gender: 'Female',
+      aadhaarLast4: '4520',
+      phone: '9880012345',
+      address: '7, Kalyan Nagar, Bengaluru, Karnataka 560043',
+      collegeName: 'Indian Institute of Science',
+      universityName: 'Indian Institute of Science',
+      rollNumber: 'AE24M0032',
+      level: 'PG',
+      discipline: 'Aerospace Engineering',
+      branchCode: 'AE',
+      cgpa: 9.0,
+      topic: 'Aeroelastic tailoring of a composite UAV wing',
+      synopsis:
+        'Ply-orientation study of a composite UAV wing to push flutter speed up without adding mass, validated against a reduced-order aeroelastic model.',
+      status: 'SUBMITTED',
+    },
+  },
+];
+
 const main = async (): Promise<void> => {
   const directorateIds = new Map<string, string>();
   for (const row of DIRECTORATES) {
@@ -337,33 +434,68 @@ const main = async (): Promise<void> => {
     });
   }
 
-  // --- referral codes: printed once, stored only as HMAC -------------------
-  const issued: string[] = [];
-  const existingCodes = await prisma.referralCode.count({ where: { sponsorId: sponsor.id, intakeYear: INTAKE_YEAR } });
-  if (existingCodes === 0) {
-    const plans = [
-      { level: 'UG' as const, days: 45 },
-      { level: 'UG' as const, days: 45 },
-      { level: 'PG' as const, days: 45 },
-    ];
-    for (const plan of plans) {
-      const body = generateReferralBody();
-      const code = formatReferralCode('LRDE-26', body);
+  // --- referral codes: fixed bodies, printed every run, stored only as HMAC --
+  const referralRows: { code: string; level: Level; name: string; email: string; dob: string; state: string }[] = [];
+  for (const plan of TEST_REFERRALS) {
+    const body = `${plan.payload}${checksumForBody(plan.payload)}`;
+    const code = formatReferralCode('LRDE-26', body);
+    const codeHmac = hmacHex(code, env.REFERRAL_HMAC_PEPPER);
+    const profile = plan.student;
+
+    // The profile behind the code. No application: the application is created
+    // when the student redeems the code, and opens with these fields filled in.
+    await prisma.student.upsert({
+      where: { email_intakeYear: { email: profile.email, intakeYear: INTAKE_YEAR } },
+      update: {},
+      create: {
+        fullName: profile.name,
+        dob: new Date(`${profile.dob}T00:00:00Z`),
+        fatherName: profile.fatherName,
+        gender: profile.gender,
+        nationality: 'Indian',
+        aadhaarLast4: profile.aadhaarLast4,
+        aadhaarRefHash: hmacHex(`seed-aadhaar-${profile.email}`, env.REFERRAL_HMAC_PEPPER),
+        email: profile.email,
+        phone: profile.phone,
+        permanentAddress: profile.address,
+        localAddress: profile.address,
+        collegeName: profile.collegeName,
+        universityName: profile.universityName,
+        rollNumber: profile.rollNumber,
+        collegeAddress: `${profile.collegeName}, Bengaluru, Karnataka 560001`,
+        category: 'GENERAL',
+        intakeYear: INTAKE_YEAR,
+      },
+    });
+
+    const existing = await prisma.referralCode.findUnique({ where: { codeHmac } });
+    let state = 'ready';
+    if (existing) {
+      state = existing.usedByApplicationId
+        ? 'USED'
+        : existing.revokedAt
+          ? 'REVOKED'
+          : existing.boundStudentEmail
+            ? 'BOUND'
+            : existing.expiresAt.getTime() < Date.now()
+              ? 'EXPIRED'
+              : 'ready';
+    } else {
       await prisma.referralCode.create({
         data: {
-          codeHmac: hmacHex(code, env.REFERRAL_HMAC_PEPPER),
+          codeHmac,
           codePrefix: 'LRDE-26',
           sponsorId: sponsor.id,
           labId: labIds.get('LRDE')!,
           level: plan.level,
           intakeYear: INTAKE_YEAR,
-          expiresAt: new Date(Date.now() + plan.days * 24 * 60 * 60 * 1000),
+          expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
           issuedBy: sponsorUser.id,
           issuedZone: 'internal',
         },
       });
-      issued.push(`${code}  (${plan.level})`);
     }
+    referralRows.push({ code, level: plan.level, name: profile.name, email: profile.email, dob: profile.dob, state });
   }
 
   // --- demo applications, one per pipeline stage ---------------------------
@@ -497,13 +629,20 @@ const main = async (): Promise<void> => {
     console.log(`${row.role.padEnd(17)}${row.email.padEnd(width + 3)}${String(row.permissions).padEnd(7)}${row.totpSecret}`);
   }
 
-  if (issued.length > 0) {
-    console.log('\nReferral codes issued just now - shown once, cannot be recovered:\n');
-    for (const code of issued) console.log(`  ${code}`);
-    console.log('');
-  } else {
-    console.log('\nReferral codes already exist for this sponsor and intake year (not re-printed).\n');
+  console.log('Student sign-in - referral codes (development only, same on every install):\n');
+  console.log(`${'REFERRAL CODE'.padEnd(21)}${'LEVEL'.padEnd(7)}${'STUDENT'.padEnd(17)}${'DATE OF BIRTH'.padEnd(15)}${'STATE'.padEnd(9)}EMAIL`);
+  console.log('-'.repeat(21 + 7 + 17 + 15 + 9 + 34));
+  for (const row of referralRows) {
+    console.log(
+      `${row.code.padEnd(21)}${row.level.padEnd(7)}${row.name.padEnd(17)}${row.dob.padEnd(15)}${row.state.padEnd(9)}${row.email}`,
+    );
   }
+  console.log('\nEnter one of these at the public zone, then the email beside it, then the 6-digit code');
+  console.log('shown on screen. The form opens with the student\'s personal and college details filled in.');
+  if (referralRows.some((row) => row.state !== 'ready')) {
+    console.log('A code marked USED/BOUND has already been spent: reset the demo database for a clean sign-in.');
+  }
+  console.log('');
 
   console.log('Demo applications - the public status check needs the number and the date of birth:\n');
   console.log(`${'APPLICATION NO'.padEnd(24)}${'STATUS'.padEnd(22)}${'DATE OF BIRTH'.padEnd(15)}EMAIL`);

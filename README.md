@@ -55,7 +55,7 @@ with the owner credentials:
 
 ```bash
 npm install
-npm run db:seed           # prints one account per role and the referral codes
+npm run db:seed           # prints one account per role and the student sign-in codes
 ```
 
 Then open `http://localhost:4000` (public/students) and `http://localhost:4001` (staff). The Vite
@@ -174,8 +174,10 @@ body and still gets 403.
 ## Seeded accounts
 
 `npm run db:seed` prints the table below, with a deterministic TOTP secret per account (derived
-from the email — a development convenience, never how a real secret is made) and three unused
-`LRDE-26-…` referral codes, shown once.
+from the email — a development convenience, never how a real secret is made) and three fixed
+`LRDE-26-…` student sign-in codes, each with a pre-filled student profile behind it:
+`LRDE-26-DEMU-G239` (Sneha Kulkarni), `LRDE-26-DEMU-G476` (Imran Sheikh) and `LRDE-26-DEMP-G58D`
+(Divya Menon), all `@example.edu.in`.
 
 | Role | Email |
 |---|---|
