@@ -44,6 +44,13 @@ services:
       # Schema changes are the owner's job. The zone roles never hold DDL rights.
       # Containers reach Postgres at the compose service name, not localhost.
       DATABASE_URL: postgresql://${POSTGRES_USER:-portal_owner}:${POSTGRES_PASSWORD:-portal_owner_dev_pw}@db:5432/${POSTGRES_DB:-ada_portal}?schema=public
+      # The seed script loads the full API env, so it needs the same secrets as a zone.
+      PORTAL_ENV: ${PORTAL_ENV:-development}
+      ALLOW_DEV_OTP: ${ALLOW_DEV_OTP:-true}
+      SESSION_SECRET: ${SESSION_SECRET}
+      OTP_PEPPER: ${OTP_PEPPER}
+      REFERRAL_HMAC_PEPPER: ${REFERRAL_HMAC_PEPPER}
+      TOTP_PEPPER: ${TOTP_PEPPER}
     depends_on:
       db:
         condition: service_healthy
@@ -111,6 +118,26 @@ services:
       interval: 10s
       timeout: 5s
       retries: 12
+
+  # Optional post-install check, the same script the offline bundle runs:
+  #   docker compose --profile tools run --rm -T verify
+  #   docker compose --profile tools run --rm -T verify --student
+  verify:
+    image: ada-portal-api:dev
+    profiles: ["tools"]
+    entrypoint: ["node", "/verify/verify.mjs"]
+    environment:
+      VERIFY_PUBLIC_URL: http://api-public:4000
+      VERIFY_INTERNAL_URL: http://api-internal:4001
+      PUBLIC_APP_ORIGIN: http://localhost:4000
+      INTERNAL_APP_ORIGIN: http://localhost:4001
+    volumes:
+      - ./intranet-bundle/scripts:/verify:ro
+    depends_on:
+      api-public:
+        condition: service_healthy
+      api-internal:
+        condition: service_healthy
 
 volumes:
   ada_files:

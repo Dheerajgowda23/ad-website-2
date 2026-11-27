@@ -6,6 +6,9 @@ One page to keep open while you test. Everything below is created by the seed th
 
 Version 1.0.0. Last verified against image `ada-portal-api:1.0.0`.
 
+The offline intranet install and a development install (`git clone`, `docker compose up -d --build`)
+both serve the two zones on `:4000`/`:4001` and run the same seed, so this page applies to both.
+
 ---
 
 ## 1. Staff logins (internal zone: http://localhost:4001)
@@ -158,3 +161,11 @@ Every table above returns to the counts in section 5, and the student login code
 TOTP secrets never change because they come from the email address.
 
 `down -v` deletes the database. `down` on its own keeps it.
+
+On a development or friend-laptop install the same reset is:
+
+```
+docker compose down -v
+docker compose up -d
+docker compose run --rm -T migrate npm run db:seed -w @ada/api | tee seed-output.txt
+```

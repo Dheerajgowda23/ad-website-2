@@ -50,13 +50,15 @@ docker compose up -d      # db + migrate (one-shot) + both API zones
 
 That gives `:4000` (public) and `:4001` (internal) from the **same image**, so the only difference
 between the two services is `ZONE` and the Postgres role they connect as. Each zone also serves its
-own built React app from that same origin, so the containers alone are a complete portal. Seed once
-with the owner credentials:
+own built React app from that same origin, so the containers alone are a complete portal. Seed once,
+inside the container (no Node.js needed on the host):
 
 ```bash
-npm install
-npm run db:seed           # prints one account per role and the student sign-in codes
+docker compose run --rm -T migrate npm run db:seed -w @ada/api
 ```
+
+That prints one account per role, the three student sign-in codes, and 20 demo applications. With
+Node.js installed you can run the same seed on the host: `npm install && npm run db:seed`.
 
 Then open `http://localhost:4000` (public/students) and `http://localhost:4001` (staff). The Vite
 dev servers are only for frontend work with hot reload, and proxy `/api` into the containers:
@@ -82,6 +84,59 @@ Notes on the compose stack:
 - `migrate` runs `prisma migrate deploy` as `portal_owner` and exits; both APIs wait for it. Schema
   changes never run as a zone role.
 - The image installs `openssl`, without which Prisma cannot pick its query engine on a slim base.
+
+## Test it on another laptop (from GitHub)
+
+Nothing from the development machine is needed. The laptop needs internet once, Docker Desktop,
+and Git. Every command below runs on the laptop.
+
+Windows (PowerShell):
+
+1. Install Docker Desktop and Git for Windows, then start Docker Desktop.
+2. Clone the public repository and enter it:
+   ```powershell
+   git clone https://github.com/Dheerajgowda23/ad-website-2.git
+   cd ad-website-2
+   ```
+3. Create the development env file:
+   ```powershell
+   Copy-Item .env.example .env
+   ```
+4. Build and start. The first run downloads the base images and compiles both React apps, so give
+   it 5–10 minutes:
+   ```powershell
+   docker compose up -d --build
+   ```
+5. Wait until both zones report healthy (`docker compose ps`). If they do not, read
+   `docker compose logs --tail=60 migrate api-public api-internal`.
+6. Seed the test data inside the container:
+   ```powershell
+   docker compose run --rm -T migrate npm run db:seed -w @ada/api
+   ```
+   Keep the output: it lists the seven staff logins with their TOTP secrets, the three student
+   referral codes, and all 20 demo applications with their dates of birth.
+7. Open `http://localhost:4000` (students) and `http://localhost:4001` (staff).
+8. Check the install:
+   ```powershell
+   docker compose --profile tools run --rm -T verify
+   ```
+   Every line must say PASS. Add `--student` to also walk the full student journey (that uses one
+   referral code, so reset afterwards if you want all three codes unused).
+
+On macOS/Linux the only difference is step 3: `cp .env.example .env`.
+
+What to type:
+
+- **Staff:** `admin.hr@ada.gov.in`, then the mailbox code shown on screen, then the authenticator
+  code shown on screen (development mode). The other six roles are listed in
+  `intranet-bundle/docs/TEST-DATA.md`.
+- **Student:** `LRDE-26-DEMU-G476`, then `imran.sheikh@example.edu.in`, then the code shown on
+  screen. The form opens with that student's details filled in.
+- **Status check:** `ADA/INT/R/2026/0001` with date of birth `2003-04-18`.
+
+To reset to the documented data: `docker compose down -v`, `docker compose up -d`, then run the
+seed command from step 6 again. Full test-data reference (all roles, all 20 statuses, referral
+codes, row counts): `intranet-bundle/docs/TEST-DATA.md`.
 
 ## Offline intranet install
 
