@@ -102,7 +102,8 @@ if [ "$SEED" = 1 ]; then
   "${COMPOSE[@]}" --profile tools run --rm -T tools npm run db:seed -w @ada/api | tee seed-output.txt \
     || fail "Seeding failed. Inspect the output above."
   echo
-  echo "Seeded credentials and the three one-time referral codes are also saved in seed-output.txt."
+  echo "Seeded logins, the three student sign-in codes and one case per status are in seed-output.txt."
+  echo "What to log in with and which case to open: docs/TEST-DATA.md"
 fi
 
 say "Installed"

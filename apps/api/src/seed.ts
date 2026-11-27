@@ -106,6 +106,50 @@ interface SeedApplication {
  * One student per pipeline stage, so both dashboards and the public status page
  * have something to show. Dates of birth are what the status check asks for.
  */
+const COLLEGES = [
+  ['BMS College of Engineering', 'Visvesvaraya Technological University', 'Bengaluru, Karnataka'],
+  ['College of Engineering, Pune', 'Savitribai Phule Pune University', 'Pune, Maharashtra'],
+  ['NIT Rourkela', 'NIT Rourkela', 'Bhubaneswar, Odisha'],
+  ['SRM Institute of Science and Technology', 'SRM Institute of Science and Technology', 'Chennai, Tamil Nadu'],
+  ['VIT Vellore', 'VIT Vellore', 'Vellore, Tamil Nadu'],
+];
+const FATHERS = ['S. Rao', 'A. Mehta', 'M. Nair', 'V. Reddy', 'P. Das', 'K. Pillai'];
+
+/** Fills the boilerplate for the demonstration cases below seq 7. */
+const extraApp = (
+  seq: number,
+  name: string,
+  email: string,
+  dob: string,
+  level: Level,
+  status: ApplicationStatus,
+  topic: string,
+): SeedApplication => {
+  const college = COLLEGES[seq % COLLEGES.length]!;
+  return {
+    seq,
+    name,
+    email,
+    dob,
+    fatherName: FATHERS[seq % FATHERS.length]!,
+    gender: seq % 2 === 0 ? 'Female' : 'Male',
+    aadhaarLast4: String(1000 + ((seq * 733) % 9000)),
+    phone: `9${String(800000000 + seq * 1234567).slice(-9)}`,
+    address: `${seq + 10}, ${college[2]}`,
+    collegeName: college[0]!,
+    universityName: college[1]!,
+    rollNumber: `1AD${21 + (seq % 4)}${level === 'PG' ? 'M' : 'E'}${String(seq).padStart(3, '0')}`,
+    level,
+    discipline: level === 'PG' ? 'Aerospace Engineering' : 'Electronics & Communication',
+    branchCode: level === 'PG' ? 'AE' : 'EC',
+    cgpa: Number((7 + (seq % 18) / 10).toFixed(1)),
+    topic,
+    synopsis: `${topic}. Seeded case so the ${status} screen has a real packet to open.`,
+    status,
+    collegeLetter: !['INVITED', 'IN_PROGRESS'].includes(status),
+  };
+};
+
 const TEST_APPLICATIONS: SeedApplication[] = [
   {
     seq: 1,
@@ -246,6 +290,52 @@ const TEST_APPLICATIONS: SeedApplication[] = [
       'Streaming dashboard for post-flight telemetry, with parameter grouping and a replay timeline for test engineers.',
     status: 'IN_PROGRESS',
   },
+  // --- one case for every remaining status ---------------------------------
+  extraApp(7, 'Aisha Khan', 'aisha.khan@example.edu.in', '2003-05-22', 'UG', 'INVITED', 'Human factors in cockpit display design'),
+  extraApp(8, 'Vikram Joshi', 'vikram.joshi@example.edu.in', '2002-03-16', 'UG', 'RETURNED_FOR_CORRECTION', 'Vibration isolation for an avionics rack'),
+  extraApp(9, 'Neha Reddy', 'neha.reddy@example.edu.in', '2001-09-27', 'PG', 'NOT_RECOMMENDED', 'Guidance law tuning for a terminal-phase interceptor'),
+  extraApp(10, 'Aditya Kulkarni', 'aditya.kulkarni@example.edu.in', '2003-06-08', 'UG', 'DIRECTOR_DECISION', 'Loads estimation from strain-gauge data'),
+  extraApp(11, 'Farhan Ali', 'farhan.ali@example.edu.in', '2002-12-01', 'UG', 'REJECTED', 'Wireless harness reduction in an avionics bay'),
+  extraApp(12, 'Kavya Menon', 'kavya.menon@example.edu.in', '2003-03-05', 'UG', 'ACCEPTED', 'Cockpit alerting logic for degraded navigation'),
+  extraApp(13, 'Rahul Verma', 'rahul.verma@example.edu.in', '2002-10-12', 'UG', 'DOCUMENT_VERIFIED', 'Test-rig instrumentation for a hydraulic actuator'),
+  extraApp(14, 'Sneha Pillai', 'sneha.pillai@example.edu.in', '2003-07-30', 'UG', 'SECURITY_PASS', 'Corrosion inspection of a wing attachment fitting'),
+  extraApp(15, 'Aman Gupta', 'aman.gupta@example.edu.in', '2002-05-04', 'UG', 'IN_TRAINING', 'Telemetry ground-station antenna tracker'),
+  extraApp(16, 'Ritu Shah', 'ritu.shah@example.edu.in', '2003-08-21', 'UG', 'COMPLETED', 'Fatigue life estimate for a landing-gear bracket'),
+  extraApp(17, 'Suresh Babu', 'suresh.babu@example.edu.in', '2001-11-11', 'PG', 'CERTIFICATE_ISSUED', 'Radar cross-section measurement techniques'),
+  extraApp(18, 'Tanvi Desai', 'tanvi.desai@example.edu.in', '2003-01-19', 'UG', 'WITHDRAWN', 'Thermal analysis of a fuel-cooled heat exchanger'),
+  extraApp(19, 'Manish Yadav', 'manish.yadav@example.edu.in', '2002-04-02', 'UG', 'CANCELLED', 'Mission computer software test harness'),
+  extraApp(20, 'Pooja Hegde', 'pooja.hegde@example.edu.in', '2003-10-15', 'UG', 'EXPIRED', 'Air-data probe calibration rig'),
+];
+
+// Which related rows a status implies, so every screen has the data it reads.
+const COMMITTEE_BATCH = 'BATCH-2026-01';
+const daysFromNow = (days: number): Date => new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+const OFFER_STATUSES: ApplicationStatus[] = [
+  'OFFER_ISSUED',
+  'ACCEPTED',
+  'DOCUMENT_VERIFIED',
+  'SECURITY_PASS',
+  'IN_TRAINING',
+  'COMPLETED',
+  'CERTIFICATE_ISSUED',
+];
+const ACCEPTED_STATUSES: ApplicationStatus[] = OFFER_STATUSES.slice(1);
+const PASS_STATUSES: ApplicationStatus[] = ['SECURITY_PASS', 'IN_TRAINING', 'COMPLETED', 'CERTIFICATE_ISSUED'];
+const TRAINING_STATUSES: ApplicationStatus[] = ['IN_TRAINING', 'COMPLETED', 'CERTIFICATE_ISSUED'];
+const VERIFIED_DOC_STATUSES: ApplicationStatus[] = ['DOCUMENT_VERIFIED', ...PASS_STATUSES];
+const DIRECTORATE_STATUSES: ApplicationStatus[] = [
+  'COMMITTEE_REVIEW',
+  'DIRECTOR_DECISION',
+  ...OFFER_STATUSES,
+  'NOT_RECOMMENDED',
+  'REJECTED',
+];
+const DECIDED_STATUSES: ApplicationStatus[] = ['DIRECTOR_DECISION', ...OFFER_STATUSES, 'NOT_RECOMMENDED', 'REJECTED'];
+const REVIEWED_STATUSES: ApplicationStatus[] = ['DIRECTOR_DECISION', ...OFFER_STATUSES, 'NOT_RECOMMENDED', 'REJECTED'];
+// Demo codes that show the sponsor screen's other states without being usable.
+const SPENT_REFERRALS: { payload: string; level: Level; state: 'REVOKED' | 'EXPIRED' }[] = [
+  { payload: 'DEMREV2', level: 'UG', state: 'REVOKED' },
+  { payload: 'DEMEXP3', level: 'PG', state: 'EXPIRED' },
 ];
 
 interface SeedReferral {
@@ -421,6 +511,19 @@ const main = async (): Promise<void> => {
     },
   });
 
+  // One committee batch, so the COMMITTEE account can score the review case.
+  await prisma.committeeAssignment.upsert({
+    where: { batchId_userId: { batchId: COMMITTEE_BATCH, userId: users.COMMITTEE!.id } },
+    update: { isActive: true },
+    create: {
+      intakeYear: INTAKE_YEAR,
+      batchId: COMMITTEE_BATCH,
+      userId: users.COMMITTEE!.id,
+      role: 'MEMBER',
+      assignedBy: users.ADMIN_HR!.id,
+    },
+  });
+
   for (const flag of FLAGS) {
     await prisma.featureFlag.upsert({
       where: { key: flag.key },
@@ -498,6 +601,30 @@ const main = async (): Promise<void> => {
     referralRows.push({ code, level: plan.level, name: profile.name, email: profile.email, dob: profile.dob, state });
   }
 
+  // Two spent codes, so the sponsor screen shows REVOKED and EXPIRED too.
+  for (const plan of SPENT_REFERRALS) {
+    const body = `${plan.payload}${checksumForBody(plan.payload)}`;
+    const code = formatReferralCode('LRDE-26', body);
+    const codeHmac = hmacHex(code, env.REFERRAL_HMAC_PEPPER);
+    const existing = await prisma.referralCode.findUnique({ where: { codeHmac } });
+    if (existing) continue;
+    await prisma.referralCode.create({
+      data: {
+        codeHmac,
+        codePrefix: 'LRDE-26',
+        sponsorId: sponsor.id,
+        labId: labIds.get('LRDE')!,
+        level: plan.level,
+        intakeYear: INTAKE_YEAR,
+        expiresAt: new Date(plan.state === 'EXPIRED' ? Date.now() - 24 * 60 * 60 * 1000 : Date.now() + 365 * 24 * 60 * 60 * 1000),
+        issuedBy: sponsorUser.id,
+        issuedZone: 'internal',
+        revokedAt: plan.state === 'REVOKED' ? new Date() : null,
+        revokedReason: plan.state === 'REVOKED' ? 'Revoked by the sponsor (demo)' : null,
+      },
+    });
+  }
+
   // --- demo applications, one per pipeline stage ---------------------------
   const seededApplications: { applicationNo: string; status: string; email: string; dob: string }[] = [];
   for (const plan of TEST_APPLICATIONS) {
@@ -522,16 +649,40 @@ const main = async (): Promise<void> => {
       },
     });
 
-    const applicationNo = formatApplicationNo('REFERRED', INTAKE_YEAR, plan.seq);
+    // On a fresh database these are 0001-0020; a database that already ran real
+    // submissions may hold some of those numbers, so fall back to a 9xxx block.
+    const preferredNo = formatApplicationNo('REFERRED', INTAKE_YEAR, plan.seq);
+    const numberTaken = await prisma.application.findUnique({
+      where: { applicationNo: preferredNo },
+      select: { id: true },
+    });
+    const applicationNo = numberTaken
+      ? formatApplicationNo('REFERRED', INTAKE_YEAR, 9000 + plan.seq)
+      : preferredNo;
     const existing = await prisma.application.findFirst({
       where: { studentId: student.id, intakeYear: INTAKE_YEAR },
     });
     if (existing) {
-      seededApplications.push({ applicationNo: existing.applicationNo ?? applicationNo, status: plan.status, email: plan.email, dob: plan.dob });
+      // Backfill only the list-visible flag, so a re-seed still shows verified
+      // letters on the cases that should have them.
+      if (VERIFIED_DOC_STATUSES.includes(plan.status) && !existing.collegeLetterVerifiedAt) {
+        await prisma.application.update({
+          where: { id: existing.id },
+          data: { collegeLetterVerifiedBy: users.ADMIN_HR?.id ?? null, collegeLetterVerifiedAt: new Date() },
+        });
+      }
+      // Report what is actually in the database, not what this plan would create.
+      seededApplications.push({
+        applicationNo: existing.applicationNo ?? '(unnumbered)',
+        status: existing.status,
+        email: plan.email,
+        dob: plan.dob,
+      });
       continue;
     }
 
-    const submitted = plan.status !== 'IN_PROGRESS';
+    const submitted = !['IN_PROGRESS', 'INVITED'].includes(plan.status);
+    const decided = DECIDED_STATUSES.includes(plan.status);
     const application = await prisma.application.create({
       data: {
         applicationNo,
@@ -547,8 +698,10 @@ const main = async (): Promise<void> => {
         yearOfStudy: plan.level === 'UG' ? '4' : '1',
         cgpa: plan.cgpa,
         durationWeeks: 16,
-        startDate: new Date(`${INTAKE_YEAR}-01-05T00:00:00Z`),
-        endDate: new Date(`${INTAKE_YEAR}-04-26T00:00:00Z`),
+        // Training that is over sits in the past; everything ahead of it keeps
+        // dates in the future so the hourly no-show sweep leaves the demo alone.
+        startDate: TRAINING_STATUSES.includes(plan.status) ? daysFromNow(-120) : daysFromNow(30),
+        endDate: TRAINING_STATUSES.includes(plan.status) ? daysFromNow(-20) : daysFromNow(30 + 16 * 7),
         topic: plan.topic,
         synopsis: plan.synopsis,
         status: plan.status,
@@ -556,9 +709,41 @@ const main = async (): Promise<void> => {
         intakeYear: INTAKE_YEAR,
         submittedAt: submitted ? new Date() : null,
         lastEditedAt: new Date(),
+        directorateId: DIRECTORATE_STATUSES.includes(plan.status) ? (directorateIds.get('AVIONICS') ?? null) : null,
+        committeeBatchId: ['COMMITTEE_REVIEW', 'DIRECTOR_DECISION'].includes(plan.status) ? COMMITTEE_BATCH : null,
+        decisionAt: decided ? new Date() : null,
+        decisionBy: decided ? users.DIRECTOR!.id : null,
+        collegeLetterVerifiedBy: VERIFIED_DOC_STATUSES.includes(plan.status) ? users.ADMIN_HR?.id : null,
+        collegeLetterVerifiedAt: VERIFIED_DOC_STATUSES.includes(plan.status) ? new Date() : null,
         rejectionReasonCode: plan.rejectionReasonCode ?? null,
+        withdrawnAt: plan.status === 'WITHDRAWN' ? new Date() : null,
+        cancellationReason: plan.status === 'CANCELLED' ? 'Candidate did not report on the reporting date' : null,
       },
     });
+
+    if (DIRECTORATE_STATUSES.includes(plan.status)) {
+      await prisma.directorateAssignment.create({
+        data: {
+          applicationId: application.id,
+          directorateId: directorateIds.get('AVIONICS')!,
+          guideId: users.GUIDE?.id ?? null,
+          assignedBy: users.ADMIN_HR!.id,
+        },
+      });
+    }
+
+    if (REVIEWED_STATUSES.includes(plan.status)) {
+      await prisma.review.create({
+        data: {
+          applicationId: application.id,
+          committeeMemberId: users.COMMITTEE!.id,
+          score: 8.2,
+          remarks: 'Recommended by the seeded committee review',
+          recommendation: plan.status === 'NOT_RECOMMENDED' ? 'NOT_RECOMMEND' : 'RECOMMEND',
+          submittedAt: new Date(),
+        },
+      });
+    }
 
     if (submitted) {
       await prisma.applicationRevision.create({
@@ -585,6 +770,7 @@ const main = async (): Promise<void> => {
         },
       });
 
+      const verified = VERIFIED_DOC_STATUSES.includes(plan.status);
       await prisma.document.create({
         data: {
           applicationId: application.id,
@@ -592,17 +778,57 @@ const main = async (): Promise<void> => {
           version: 1,
           fileId: file.id,
           sha256: file.sha256,
+          verifiedBy: verified ? users.ADMIN_HR?.id : null,
+          verifiedAt: verified ? new Date() : null,
         },
       });
     }
 
-    if (plan.reportingDate) {
+    if (OFFER_STATUSES.includes(plan.status)) {
       await prisma.offer.create({
         data: {
           applicationId: application.id,
           guideId: users.GUIDE?.id ?? null,
           issuedAt: new Date(),
-          reportingDate: new Date(`${plan.reportingDate}T00:00:00Z`),
+          // OFFER_ISSUED and ACCEPTED are the statuses the no-show sweep cancels
+          // once the reporting date passes, so their date must stay ahead of today.
+          reportingDate:
+            plan.status === 'ACCEPTED'
+              ? daysFromNow(14)
+              : plan.status === 'OFFER_ISSUED'
+                ? daysFromNow(21)
+                : daysFromNow(-30),
+          acceptedAt: ACCEPTED_STATUSES.includes(plan.status) ? daysFromNow(-10) : null,
+        },
+      });
+    }
+
+    if (PASS_STATUSES.includes(plan.status)) {
+      await prisma.joining.create({
+        data: {
+          applicationId: application.id,
+          passNo: `ADA/PASS/2026/${String(plan.seq).padStart(4, '0')}`,
+          passIssuedAt: new Date(),
+          verifiedBy: users.SECURITY?.id ?? null,
+          verifiedAt: new Date(),
+        },
+      });
+    }
+
+    if (TRAINING_STATUSES.includes(plan.status)) {
+      for (const month of ['2026-01', '2026-02']) {
+        await prisma.attendance.create({
+          data: { applicationId: application.id, month, presentDays: 21, totalDays: 22, enteredBy: users.GUIDE?.id ?? null },
+        });
+      }
+    }
+
+    if (plan.status === 'CERTIFICATE_ISSUED') {
+      await prisma.certificate.create({
+        data: {
+          applicationId: application.id,
+          serialNo: `ADA/CERT/2026/${String(plan.seq).padStart(4, '0')}`,
+          issuedBy: users.ADMIN_HR!.id,
         },
       });
     }
@@ -644,11 +870,11 @@ const main = async (): Promise<void> => {
   }
   console.log('');
 
-  console.log('Demo applications - the public status check needs the number and the date of birth:\n');
-  console.log(`${'APPLICATION NO'.padEnd(24)}${'STATUS'.padEnd(22)}${'DATE OF BIRTH'.padEnd(15)}EMAIL`);
-  console.log('-'.repeat(24 + 22 + 15 + 30));
+  console.log('Demo applications - one for every pipeline status; the public status check needs the number and DOB:\n');
+  console.log(`${'APPLICATION NO'.padEnd(24)}${'STATUS'.padEnd(24)}${'DATE OF BIRTH'.padEnd(15)}EMAIL`);
+  console.log('-'.repeat(24 + 24 + 15 + 30));
   for (const row of seededApplications) {
-    console.log(`${row.applicationNo.padEnd(24)}${row.status.padEnd(22)}${row.dob.padEnd(15)}${row.email}`);
+    console.log(`${row.applicationNo.padEnd(24)}${row.status.padEnd(24)}${row.dob.padEnd(15)}${row.email}`);
   }
   console.log('');
 };

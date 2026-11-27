@@ -42,7 +42,8 @@ WINDOWS - EXACT STEPS
        ADA staff             : http://localhost:4001
      Accounts and TOTP secrets are in seed-output.txt. The three student sign-in
      codes are fixed (LRDE-26-DEMU-G239, LRDE-26-DEMU-G476, LRDE-26-DEMP-G58D)
-     with their emails - see docs\TESTING.md section 5.
+     with their emails - see docs\TESTING.md section 5. Every login and every
+     seeded case, one per status, is listed on one page in docs\TEST-DATA.md.
 
   5. Prove it works, in one command:
        docker compose -f docker-compose.intranet.yml --profile tools run --rm -T tools node /app/verify.mjs
@@ -134,6 +135,7 @@ WHAT THIS VERSION DOES NOT DO YET
 
 FULL INSTRUCTIONS
   docs/TESTING.md                                   (run, test, credentials)
+  docs/TEST-DATA.md                                 (what to log in with, which case tests what)
   docs/ADA-Portal-Intranet-Installation-Guide.pdf   (print this)
   docs/ADA-Portal-Intranet-Installation-Guide.docx  (editable)
   docs/ADA-Portal-Intranet-Installation-Guide.md

@@ -25,6 +25,15 @@ const TEST_STUDENT_EMAIL = process.env.VERIFY_STUDENT_EMAIL || 'test.student@exa
 // What `npm run db:seed` creates on a fresh database (apps/api/src/seed.ts).
 const SEEDED_APP = { applicationNo: 'ADA/INT/R/2026/0001', dob: '2003-04-18' };
 
+// Every status the seed has a case for, so the dashboards and status filters all
+// have something to open.
+const ALL_STATUSES = [
+  'INVITED', 'IN_PROGRESS', 'SUBMITTED', 'RETURNED_FOR_CORRECTION', 'HR_SCREENING',
+  'REJECTED_ELIGIBILITY', 'COMMITTEE_REVIEW', 'NOT_RECOMMENDED', 'DIRECTOR_DECISION', 'REJECTED',
+  'OFFER_ISSUED', 'ACCEPTED', 'DOCUMENT_VERIFIED', 'SECURITY_PASS', 'IN_TRAINING', 'COMPLETED',
+  'CERTIFICATE_ISSUED', 'WITHDRAWN', 'CANCELLED', 'EXPIRED',
+];
+
 // Fixed student sign-in codes. Each has a student profile behind it, so the form
 // opens with the personal and college fields already filled in.
 const SEEDED_REFERRALS = [
@@ -180,6 +189,17 @@ const main = async () => {
     const users = res.json?.users ?? [];
     expect(users.length >= 7, `only ${users.length} staff rows`);
     return `${users.length} staff accounts`;
+  });
+
+  await check('all 20 pipeline statuses have a seeded case', async () => {
+    expect(admin, 'login failed, nothing to test');
+    const res = await request(INTERNAL_URL, '/api/staff/casework/applications', { cookie: admin.cookie });
+    expect(res.status === 200, `HTTP ${res.status}`);
+    const items = res.json?.items ?? res.json?.applications ?? [];
+    const seen = new Set(items.map((item) => item.status));
+    const missing = ALL_STATUSES.filter((status) => !seen.has(status));
+    expect(missing.length === 0, `no seeded case for ${missing.join(', ')}`);
+    return `${seen.size} statuses across ${items.length} applications`;
   });
 
   await check('configuration screen returns the feature flags', async () => {

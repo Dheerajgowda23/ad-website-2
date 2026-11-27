@@ -119,7 +119,7 @@ CONTENT = [
         "  scripts/                       install, start, stop, status, logs, backup, restore,",
         "                                 enrol-totp, issue-referral, use-host, verify",
         "                                 (.sh for Linux/macOS, .ps1 for Windows)",
-        "  docs/                          this guide (PDF and DOCX), TESTING.md, gap analysis",
+        "  docs/                          this guide (PDF and DOCX), TESTING.md, TEST-DATA.md, gap analysis",
         "  SHA256SUMS.txt                 checksums to prove the copy is intact",
     ]),
     ("p", "Do not rename or move files out of the folder. The scripts find everything relative to their own "
@@ -256,8 +256,9 @@ CONTENT = [
              "development OTP echo (section 12)."),
 
     ("h2", "8.4 Demo applications"),
-    ("p", "The seed creates one application per pipeline stage, so every screen has something to open. "
-          "The public status check - no sign-in - needs the application number and the date of birth:"),
+    ("p", "The seed creates one application for every one of the 20 pipeline statuses, so every screen "
+          "and every status filter has something to open. The six everyday cases, which the public status "
+          "check can also look up without a sign-in, are:"),
     ("table", [
         ["Application number", "Status", "Date of birth", "Candidate"],
         ["ADA/INT/R/2026/0001", "SUBMITTED", "2003-04-18", "Ananya Iyer"],
@@ -268,8 +269,9 @@ CONTENT = [
         ["ADA/INT/R/2026/0006", "IN_PROGRESS", "2003-09-30", "Arjun Pillai"],
     ]),
     ("note", "Check one at http://localhost:4000 - application number plus date of birth. A wrong date "
-             "returns not found, which is the check working. These six are demonstration data: delete "
-             "them before real applications are accepted."),
+             "returns not found, which is the check working. The full 20-case list, with what each case "
+             "tests, is in docs/TEST-DATA.md; all of it is demonstration data, so delete it before real "
+             "applications are accepted."),
 
     ("h1", "9. Everyday operations"),
     ("table", [

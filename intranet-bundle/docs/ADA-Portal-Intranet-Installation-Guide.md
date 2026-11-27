@@ -109,7 +109,8 @@ ada-portal-intranet/
   scripts/                       install, start, stop, status, logs, backup, restore,
                                  enrol-totp, issue-referral, use-host, verify
                                  (.sh for Linux/macOS, .ps1 for Windows)
-  docs/                          this guide (PDF and DOCX), TESTING.md, gap analysis
+  docs/                          this guide (PDF and DOCX), TESTING.md, TEST-DATA.md, gap
+    analysis
   SHA256SUMS.txt                 checksums to prove the copy is intact
 ```
 
@@ -259,7 +260,7 @@ Each code is single use. A spent code cannot be reused - reset the demo database
 
 ### 8.4 Demo applications
 
-The seed creates one application per pipeline stage, so every screen has something to open. The public status check - no sign-in - needs the application number and the date of birth:
+The seed creates one application for every one of the 20 pipeline statuses, so every screen and every status filter has something to open. The six everyday cases, which the public status check can also look up without a sign-in, are:
 
 | Application number | Status | Date of birth | Candidate |
 |---|---|---|---|
@@ -270,7 +271,7 @@ The seed creates one application per pipeline stage, so every screen has somethi
 | ADA/INT/R/2026/0005 | REJECTED_ELIGIBILITY | 2002-08-09 | Meghna Das |
 | ADA/INT/R/2026/0006 | IN_PROGRESS | 2003-09-30 | Arjun Pillai |
 
-> Check one at http://localhost:4000 - application number plus date of birth. A wrong date returns not found, which is the check working. These six are demonstration data: delete them before real applications are accepted.
+> Check one at http://localhost:4000 - application number plus date of birth. A wrong date returns not found, which is the check working. The full 20-case list, with what each case tests, is in docs/TEST-DATA.md; all of it is demonstration data, so delete it before real applications are accepted.
 
 ## 9. Everyday operations
 

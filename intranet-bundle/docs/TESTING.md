@@ -120,7 +120,8 @@ fresh code, and changes nothing else.
 
 ## 3. Test accounts
 
-All seven are created by `npm run db:seed`, which `install.ps1` / `install.sh` runs by default. Sign
+All seven are created by `npm run db:seed`, which `install.ps1` / `install.sh` runs by default.
+**`TEST-DATA.md`** lists every login and every seeded case on one page. Sign
 in at **http://localhost:4001** with email -> the 6-digit mailbox code shown on screen -> the 6-digit
 authenticator code shown on screen (the demo sets `ALLOW_DEV_OTP=true`, so no mail server and no
 phone app are needed).
@@ -148,19 +149,10 @@ prints the current code for an account.
 
 ## 4. Seeded student data
 
-Six applications, one per pipeline stage, all at LRDE. The public status check needs the number
+Twenty applications, one for every pipeline status, all at LRDE. The full table - number, status,
+candidate, date of birth and what each case tests - is in **`TEST-DATA.md` section 3**. Every row
+prints at the end of each seed run and in `seed-output.txt`. The public status check needs the number
 **and** the date of birth.
-
-| Application number | Status | Date of birth | Candidate |
-| --- | --- | --- | --- |
-| `ADA/INT/R/2026/0001` | SUBMITTED (editable) | `2003-04-18` | Ananya Iyer |
-| `ADA/INT/R/2026/0002` | HR_SCREENING | `2002-11-02` | Rohan Mehta |
-| `ADA/INT/R/2026/0003` | COMMITTEE_REVIEW (PG) | `2001-06-25` | Priya Nair |
-| `ADA/INT/R/2026/0004` | OFFER_ISSUED | `2003-01-14` | Karthik Rao |
-| `ADA/INT/R/2026/0005` | REJECTED_ELIGIBILITY | `2002-08-09` | Meghna Das |
-| `ADA/INT/R/2026/0006` | IN_PROGRESS (draft) | `2003-09-30` | Arjun Pillai |
-
-All six also print at the end of every seed run and in `seed-output.txt`.
 
 Public status check, no login:
 
@@ -171,12 +163,15 @@ http://localhost:4000/status   ->  ADA/INT/R/2026/0004  +  2003-01-14
 Expected: Karthik Rao, LRDE, UG, **OFFER_ISSUED**. A wrong date of birth returns "not found" - that
 is the check working, not a bug.
 
-Each row gives the staff side something to work on: `0001` can still be edited by the student,
-`0002` sits in HR screening, `0003` is the PG committee case, `0004` has an offer letter to open,
-`0005` shows a rejection reason, `0006` is a half-filled draft.
+The first six cover the everyday screens: `0001` can still be edited by the student, `0002` sits in
+HR screening, `0003` is the PG committee case, `0004` has an offer letter to open, `0005` shows a
+rejection reason, `0006` is a half-filled draft. The other fourteen fill in every remaining status,
+from INVITED through ACCEPTED, SECURITY_PASS and IN_TRAINING to CERTIFICATE_ISSUED, WITHDRAWN,
+CANCELLED and EXPIRED, with the offers, passes, attendance, reviews and certificate that those
+screens read.
 
-These six are read-only demo packets for the status check and the staff screens. They are **not** the
-student sign-in accounts - those are the three referral codes in section 5.
+All twenty are demo packets for the status check and the staff screens. They are **not** the student
+sign-in accounts - those are the three referral codes in section 5.
 
 ---
 
@@ -202,6 +197,8 @@ The form opens on **Personal Details** already filled in from the seeded profile
 birth, father's name, gender, Aadhaar last four digits, mobile, permanent and local address, college,
 university, roll number, college address and category. That is the "data inside" the login: nothing
 to type before you can look around.
+
+### 5.1 Course and project values
 
 The course and project fields belong to the application, not the profile, so they start blank. Fill
 them from the table below to get a complete application (the synopsis is only needed to submit).
@@ -274,11 +271,15 @@ Expected counts on a freshly seeded install:
 | `users` | 7 |
 | `directorates` | 5 |
 | `labs` | 5 |
-| `students` | 9 (6 demo packets + 3 sign-in profiles) |
-| `applications` | 6 |
-| `offers` | 1 |
-| `documents` | 5 |
-| `referral_codes` | 3 |
+| `students` | 23 (20 demo packets + 3 sign-in profiles) |
+| `applications` | 20 (one per status) |
+| `offers` | 7 |
+| `documents` | 18 (5 verified) |
+| `joining` (security passes) | 4 |
+| `attendance` | 6 |
+| `reviews` | 10 |
+| `certificates` | 1 |
+| `referral_codes` | 5 |
 | `feature_flags` | 6 |
 | `audit_log` | grows with every sign-in and action |
 
